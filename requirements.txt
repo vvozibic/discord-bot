@@ -8,4 +8,3 @@ paddlepaddle>=2.5.0
 paddleocr>=2.7.0
 opencv-python-headless>=4.8
 Pillow>=10.0
-numpy<2.0.0
