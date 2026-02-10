@@ -17,6 +17,19 @@ import hmac
 import database
 
 # ============================================================
+# Optional OCR acceleration deps (Pillow + numpy)
+# If missing, the bot falls back to full-image OCR.
+# ============================================================
+try:
+    from PIL import Image  # type: ignore
+    import numpy as np  # type: ignore
+    _PIL_OK = True
+except Exception:
+    Image = None  # type: ignore
+    np = None  # type: ignore
+    _PIL_OK = False
+
+# ============================================================
 # Config
 # ============================================================
 
@@ -42,6 +55,13 @@ VERIFY_CHANNEL_ID = int(getattr(config, "VERIFY_CHANNEL_ID", os.getenv("VERIFY_C
 OCR_CONCURRENCY = int(getattr(config, "OCR_CONCURRENCY", os.getenv("OCR_CONCURRENCY", "4")) or 4)
 OCR_SEMAPHORE = asyncio.Semaphore(OCR_CONCURRENCY)
 
+# Downscale very large screenshots for speed (keeps enough detail for numbers)
+MAX_IMAGE_SIDE = int(getattr(config, "MAX_IMAGE_SIDE", os.getenv("MAX_IMAGE_SIDE", "1600")) or 1600)
+
+# Enable ROI-based fast OCR (set FAST_OCR=0 to disable)
+FAST_OCR = bool(int(getattr(config, "FAST_OCR", os.getenv("FAST_OCR", "1")) or 1))
+
+
 # Role tier names (fixed, only 3 roles)
 TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 
@@ -50,7 +70,240 @@ TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 # ============================================================
 # Note: EasyOCR uses PyTorch under the hood.
 # Keep reader global so models are loaded once.
-reader = easyocr.Reader(['en'])
+# Note: EasyOCR uses PyTorch under the hood.
+# Keep reader global so models are loaded once.
+OCR_GPU = bool(int(getattr(config, "OCR_GPU", os.getenv("OCR_GPU", "0")) or 0))
+try:
+    reader = easyocr.Reader(['en'], gpu=OCR_GPU, verbose=False)
+except TypeError:
+    # Older easyocr versions might not support verbose=
+    reader = easyocr.Reader(['en'], gpu=OCR_GPU)
+
+
+# ============================================================
+# OCR Optimizations: ROI-based fast path
+# ============================================================
+
+# Smaller allowlists make recognition faster and more accurate for your use-case.
+_ALLOWLIST_NUM = "0123456789.,"
+_ALLOWLIST_HANDLE = "@abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_."
+
+# Relative ROIs (x0, y0, x1, y1) for project detection and score reading.
+# Using ratios makes it robust across different devices/resolutions.
+PROJECT_DETECT_ROIS = [
+    (0.00, 0.00, 1.00, 0.25),  # header/top area
+    (0.00, 0.20, 1.00, 0.45),  # upper-mid area
+]
+
+# Multiple candidate ROIs per project (we try them in order).
+SCORE_ROIS = {
+    "Cookie": [
+        (0.03, 0.32, 0.70, 0.62),
+        (0.00, 0.25, 0.85, 0.70),
+    ],
+    "Kaito": [
+        (0.00, 0.25, 0.45, 0.60),  # Total Yaps card/value (often left)
+        (0.00, 0.20, 0.60, 0.70),
+    ],
+    "Xeet": [
+        (0.00, 0.45, 0.35, 0.80),  # big number near bottom-left
+        (0.00, 0.35, 0.45, 0.80),
+    ],
+    "Wallchain": [
+        (0.25, 0.35, 0.75, 0.80),  # center cards (gauge score)
+        (0.15, 0.30, 0.85, 0.85),
+    ],
+    "Mindoshare": [
+        (0.25, 0.20, 0.75, 0.55),
+        (0.15, 0.15, 0.85, 0.60),
+    ],
+}
+
+# Handle usually near the top-left of a profile card/screen.
+HANDLE_ROIS = [
+    (0.00, 0.00, 0.60, 0.30),
+    (0.00, 0.00, 1.00, 0.25),
+]
+
+_NUM_RE = re.compile(r"\d[\d,]*\d(?:\.\d+)?|\d(?:\.\d+)?")
+
+def _downscale_image(img):
+    """Downscale huge images to reduce OCR cost (keeps aspect ratio)."""
+    if not _PIL_OK or MAX_IMAGE_SIDE <= 0:
+        return img
+    w, h = img.size
+    m = max(w, h)
+    if m <= MAX_IMAGE_SIDE:
+        return img
+    scale = MAX_IMAGE_SIDE / float(m)
+    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+    return img.resize(new_size)
+
+def _crop_ratio(img, roi):
+    x0, y0, x1, y1 = roi
+    w, h = img.size
+    left = max(0, int(x0 * w))
+    top = max(0, int(y0 * h))
+    right = min(w, max(left + 1, int(x1 * w)))
+    bottom = min(h, max(top + 1, int(y1 * h)))
+    return img.crop((left, top, right, bottom))
+
+def _best_number_from_texts(texts, project):
+    """Pick the most likely score from OCR'd strings."""
+    nums = []
+    for t in texts:
+        if not t:
+            continue
+        for m in _NUM_RE.findall(str(t)):
+            s = m.strip()
+            if not s:
+                continue
+            nums.append(s)
+
+    if not nums:
+        return None
+
+    # Normalize to float for ranking (keep original string to return)
+    parsed = []
+    for s in nums:
+        try:
+            v = float(s.replace(',', ''))
+            parsed.append((v, s))
+        except ValueError:
+            continue
+
+    if not parsed:
+        return None
+
+    # Project-specific heuristics
+    if project == "Wallchain":
+        # Score usually >= 10; avoid tiny % values like 2.91
+        parsed = [(v, s) for (v, s) in parsed if v >= 10]
+        if not parsed:
+            return None
+        # Often an integer; pick the largest remaining within a sane range
+        parsed.sort(key=lambda x: x[0], reverse=True)
+        return parsed[0][1]
+
+    if project == "Xeet":
+        # Xeets earned tends to be an integer >= 50
+        parsed = [(v, s) for (v, s) in parsed if v >= 50]
+        parsed.sort(key=lambda x: x[0], reverse=True)
+        return parsed[0][1] if parsed else None
+
+    if project == "Kaito":
+        # Total Yaps is often the largest value in the left ROI
+        parsed.sort(key=lambda x: x[0], reverse=True)
+        return parsed[0][1]
+
+    if project == "Cookie":
+        # Total snaps earned is usually a decimal
+        parsed.sort(key=lambda x: x[0], reverse=True)
+        return parsed[0][1]
+
+    if project == "Mindoshare":
+        parsed.sort(key=lambda x: x[0], reverse=True)
+        return parsed[0][1]
+
+    # Fallback: largest
+    parsed.sort(key=lambda x: x[0], reverse=True)
+    return parsed[0][1]
+
+async def _readtext_detail0(img, allowlist):
+    """Fast readtext: detail=0 returns only strings (no boxes)."""
+    def _run():
+        # EasyOCR accepts numpy arrays
+        arr = np.array(img) if _PIL_OK else img
+        return reader.readtext(arr, detail=0, paragraph=False, allowlist=allowlist, decoder="greedy")
+    return await asyncio.to_thread(_run)
+
+async def _fast_detect_project(img):
+    """Detect which project screenshot is for using small ROIs."""
+    if not _PIL_OK or not FAST_OCR:
+        return "Unknown"
+    try:
+        for roi in PROJECT_DETECT_ROIS:
+            crop = _crop_ratio(img, roi)
+            texts = await _readtext_detail0(crop, allowlist=_ALLOWLIST_HANDLE + _ALLOWLIST_NUM)
+            blob = " ".join(texts).lower()
+
+            if "wallchain" in blob or "quacks" in blob or "quack balance" in blob:
+                return "Wallchain"
+            if "kaito" in blob or "total yaps" in blob or "earned yaps" in blob:
+                return "Kaito"
+            if "xeet" in blob or "xeets earned" in blob:
+                return "Xeet"
+            if "cookie" in blob or "snaps earned" in blob or "total snaps" in blob:
+                return "Cookie"
+            if "kol score" in blob or "mindoshare" in blob:
+                return "Mindoshare"
+    except Exception:
+        pass
+    return "Unknown"
+
+async def _fast_extract_handle(img):
+    if not _PIL_OK or not FAST_OCR:
+        return None
+    try:
+        for roi in HANDLE_ROIS:
+            crop = _crop_ratio(img, roi)
+            texts = await _readtext_detail0(crop, allowlist=_ALLOWLIST_HANDLE)
+            for t in texts:
+                s = (t or "").strip()
+                if s.startswith("@") and len(s) > 3:
+                    return s.lstrip("@").strip().strip(".,;:!)]}(")
+    except Exception:
+        return None
+    return None
+
+async def _fast_extract_score(img, project):
+    if not _PIL_OK or not FAST_OCR:
+        return None
+    rois = SCORE_ROIS.get(project) or []
+    for roi in rois:
+        try:
+            crop = _crop_ratio(img, roi)
+            texts = await _readtext_detail0(crop, allowlist=_ALLOWLIST_NUM)
+            score = _best_number_from_texts(texts, project)
+            if score:
+                return score
+        except Exception:
+            continue
+    return None
+
+async def detect_project_score_and_handle(image_bytes: bytes, project_hint: str | None = None):
+    """
+    ROI fast path:
+      - decode bytes with Pillow
+      - downscale large images
+      - detect project (unless hint given)
+      - extract score and handle from small crops
+    Returns: (pil_img_or_None, project, score_or_None, handle_or_None, used_fast_bool)
+    """
+    if not _PIL_OK or not FAST_OCR:
+        return None, "Unknown", None, None, False
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception:
+        return None, "Unknown", None, None, False
+
+    img = _downscale_image(img)
+
+    proj = (project_hint or "").strip()
+    if proj and proj.lower() != "auto":
+        proj = proj
+    else:
+        proj = await _fast_detect_project(img)
+
+    score = None
+    if proj != "Unknown":
+        score = await _fast_extract_score(img, proj)
+
+    handle = await _fast_extract_handle(img)
+    used_fast = (proj != "Unknown" and score is not None)
+    return img, proj, score, handle, used_fast
+
 
 # ============================================================
 # Helper: atomic JSON (kept for compatibility)
@@ -524,8 +777,16 @@ async def xunlink_cmd(interaction: discord.Interaction):
     await interaction.response.send_message("✅ Unlinked." if removed else "You were not linked.", ephemeral=True)
 
 @tree.command(name="verify", description="Upload a screenshot for verification (ephemeral)")
-@discord.app_commands.describe(image="Upload a screenshot (PNG/JPG)")
-async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment):
+@discord.app_commands.describe(image="Upload a screenshot (PNG/JPG)", project="Which dashboard is in the screenshot (Auto recommended)")
+@discord.app_commands.choices(project=[
+    discord.app_commands.Choice(name="Auto", value="auto"),
+    discord.app_commands.Choice(name="Cookie", value="Cookie"),
+    discord.app_commands.Choice(name="Xeet", value="Xeet"),
+    discord.app_commands.Choice(name="Kaito", value="Kaito"),
+    discord.app_commands.Choice(name="Wallchain", value="Wallchain"),
+    discord.app_commands.Choice(name="Mindoshare", value="Mindoshare"),
+])
+async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment, project: discord.app_commands.Choice[str] | None = None):
     # Must be used in a guild
     if not interaction.guild or not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
@@ -553,32 +814,63 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
     try:
         image_bytes = await image.read()
 
+        project_hint = (project.value if project else "auto")
+
         # Concurrency limiter: avoid melting CPU under load.
+        # Inside the semaphore we try a fast ROI-based path first; if it can't confidently extract,
+        # we fall back to full-image OCR (your existing logic).
         async with OCR_SEMAPHORE:
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(None, reader.readtext, image_bytes)
+            pil_img, proj_fast, score_fast, handle_fast, used_fast = await detect_project_score_and_handle(
+                image_bytes,
+                project_hint=project_hint
+            )
 
-        project = classify_project(results)
+            results = None
+            project_name = proj_fast
 
-        # Extract score
-        score_val = None
-        if project == "Wallchain":
-            score_val = extract_wallchain_score(results)
-        elif project == "Kaito":
-            score_val = extract_kaito_score(results)
-        elif project == "Xeet":
-            score_val = extract_xeet_score(results)
-        elif project == "Cookie":
-            score_val = extract_cookie_score(results)
-        elif project == "Mindoshare":
-            score_val = extract_mindoshare_score(results)
-        else:
-            # Fallback sequence
-            score_val = extract_mindoshare_score(results) or extract_wallchain_score(results) or extract_kaito_score(results)
+            # If fast path didn't succeed, do full OCR on the downscaled image (if we decoded it),
+            # otherwise on raw bytes.
+            if (not used_fast) or (project_hint != "auto" and proj_fast == "Unknown"):
+                def _full_run():
+                    if _PIL_OK and pil_img is not None:
+                        return reader.readtext(np.array(pil_img))
+                    return reader.readtext(image_bytes)
+                results = await asyncio.to_thread(_full_run)
+                if project_hint != "auto":
+                    project_name = project_hint
+                else:
+                    project_name = classify_project(results)
 
+            # Decide which score to use
+            if used_fast and score_fast is not None and project_name != "Unknown":
+                score_val = score_fast
+            else:
+                # Extract score using your existing rules from full OCR results
+                score_val = None
+                if results is None:
+                    score_val = None
+                else:
+                    if project_name == "Wallchain":
+                        score_val = extract_wallchain_score(results)
+                    elif project_name == "Kaito":
+                        score_val = extract_kaito_score(results)
+                    elif project_name == "Xeet":
+                        score_val = extract_xeet_score(results)
+                    elif project_name == "Cookie":
+                        score_val = extract_cookie_score(results)
+                    elif project_name == "Mindoshare":
+                        score_val = extract_mindoshare_score(results)
+                    else:
+                        score_val = extract_mindoshare_score(results) or extract_wallchain_score(results) or extract_kaito_score(results)
+
+            # Handle extraction: prefer fast handle, fallback to full if needed
+            img_handle = handle_fast
+            if img_handle is None and results is not None:
+                img_handle = extract_handle(results)
+
+        project = project_name
         # Handle / identity check
         handle_error = None
-        img_handle = extract_handle(results)
         required_handle = (x_link.get("x_username") or "").lower()
         if img_handle and img_handle.lower() != required_handle:
             handle_error = f"Found @{img_handle} in image, but your linked account is @{required_handle}"
@@ -619,6 +911,14 @@ async def on_ready():
     print(f"Logged in as {client.user} (ID: {client.user.id})")
     await database.init_db()
     print("Database initialized.")
+
+    # Warm up OCR models (reduces first /verify latency)
+    try:
+        if _PIL_OK:
+            dummy = Image.new('RGB', (320, 240), color=(0, 0, 0))
+            await asyncio.to_thread(lambda: reader.readtext(np.array(dummy), detail=0))
+    except Exception:
+        pass
 
     # Sync commands
     try:
