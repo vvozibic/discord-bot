@@ -4,6 +4,8 @@ fastapi>=0.100
 uvicorn[standard]>=0.22
 aiosqlite>=0.19
 aiohttp>=3.8
-easyocr>=1.7
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0
 opencv-python-headless>=4.8
 Pillow>=10.0
+numpy<2.0.0
