@@ -179,6 +179,18 @@ def classify_project(results):
         return "Mindoshare"
     return "Unknown"
 
+def _extract_numeric_token(text: str, allow_decimal: bool = True):
+    clean = text.strip().replace(",", "")
+    if not clean:
+        return None
+    match = re.search(r"\d+(?:\.\d+)?", clean)
+    if not match:
+        return None
+    token = match.group(0)
+    if (not allow_decimal) and ("." in token):
+        return None
+    return token
+
 def extract_mindoshare_score(results):
     kw_bbox = None
     for (bbox, text, prob) in results:
@@ -206,29 +218,76 @@ def extract_mindoshare_score(results):
 
 def extract_wallchain_score(results):
     score_bbox = None
+    top_bbox = None
     for (bbox, text, prob) in results:
-        if text.strip() == "Score":
+        t = text.lower().strip()
+        if t == "score":
             score_bbox = bbox
-            break
+        if ("top" in t and "%" in t) or t == "top":
+            top_bbox = bbox
+
+    # Wallchain usually renders score right above "Top xx%".
+    # Anchor on that label first because dial ticks (0/50/100/200/...) are frequent OCR false picks.
+    if top_bbox:
+        top_center_x = (top_bbox[0][0] + top_bbox[1][0]) / 2
+        top_top_y = min(top_bbox[0][1], top_bbox[1][1])
+        top_candidates = []
+        for (bbox, text, prob) in results:
+            clean_text = _extract_numeric_token(text, allow_decimal=False)
+            if not clean_text:
+                continue
+            try:
+                value = int(clean_text)
+            except ValueError:
+                continue
+            if value <= 0:
+                continue
+            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
+            cand_bottom_y = max(bbox[2][1], bbox[3][1])
+            cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
+            if abs(cand_center_x - top_center_x) < 180 and cand_bottom_y <= top_top_y:
+                dist = top_top_y - cand_bottom_y
+                if dist <= 180:
+                    top_candidates.append((cand_height, dist, clean_text))
+
+        top_candidates.sort(key=lambda x: (-x[0], x[1]))
+        if top_candidates:
+            return top_candidates[0][2]
+
     if not score_bbox:
         return None
 
-    score_center_x = (score_bbox[0][0] + score_bbox[1][0]) / 2
-    score_bottom_y = score_bbox[2][1]
+    score_left_x = min(p[0] for p in score_bbox)
+    score_right_x = max(p[0] for p in score_bbox)
+    score_bottom_y = max(score_bbox[2][1], score_bbox[3][1])
+    search_left_x = score_left_x - 40
+    search_right_x = score_right_x + 340
+    search_top_y = score_bottom_y + 10
 
     candidates = []
     for (bbox, text, prob) in results:
-        clean_text = text.strip()
-        if re.match(r'^\d+(\.\d+)?$', clean_text):
-            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
-            cand_top_y = bbox[0][1]
-            cand_height = bbox[2][1] - bbox[0][1]
-            if abs(cand_center_x - score_center_x) < 100 and cand_top_y >= score_bottom_y:
-                dist = cand_top_y - score_bottom_y
-                candidates.append((cand_height, dist, clean_text))
+        clean_text = _extract_numeric_token(text, allow_decimal=False)
+        if not clean_text:
+            continue
+        try:
+            value = int(clean_text)
+        except ValueError:
+            continue
+        if value <= 0:
+            continue
 
-    candidates.sort(key=lambda x: (-x[0], x[1]))
-    return candidates[0][2] if candidates else None
+        cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
+        cand_top_y = min(bbox[0][1], bbox[1][1])
+        cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
+
+        if search_left_x <= cand_center_x <= search_right_x and cand_top_y >= search_top_y:
+            dist = cand_top_y - search_top_y
+            if dist <= 300:
+                digit_bonus = 1 if len(clean_text) >= 2 else 0
+                candidates.append((digit_bonus, cand_height, dist, clean_text))
+
+    candidates.sort(key=lambda x: (-x[0], -x[1], x[2]))
+    return candidates[0][3] if candidates else None
 
 def extract_kaito_score(results):
     total_bbox = None
