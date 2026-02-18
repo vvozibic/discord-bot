@@ -171,7 +171,7 @@ def classify_project(results):
         return "Wallchain"
     if "kaito" in text_blob or "total yaps" in text_blob or "earned yaps" in text_blob:
         return "Kaito"
-    if "xeet" in text_blob or "xeets earned" in text_blob:
+    if "xeets earned" in text_blob or ("xeet" in text_blob and "earned" in text_blob):
         return "Xeet"
     if "cookie" in text_blob or "snaps earned" in text_blob or "total snaps" in text_blob:
         return "Cookie"
@@ -393,16 +393,35 @@ def extract_kaito_score(results):
 
 def extract_xeet_score(results):
     label_bbox = None
+
+    # Require an explicit Xeets earned confirmation to avoid false positives.
     for (bbox, text, prob) in results:
         t = text.lower().strip()
         if "xeets earned" in t or ("xeet" in t and "earned" in t):
             label_bbox = bbox
             break
+
+    # OCR may split label into two tokens ("Xeets" and "earned").
     if not label_bbox:
+        xeet_bbox = None
+        earned_bbox = None
         for (bbox, text, prob) in results:
-            if "earned" in text.lower().strip():
-                label_bbox = bbox
-                break
+            t = text.lower().strip()
+            if xeet_bbox is None and "xeet" in t:
+                xeet_bbox = bbox
+            if earned_bbox is None and "earned" in t:
+                earned_bbox = bbox
+        if xeet_bbox and earned_bbox:
+            xeet_center_y = (xeet_bbox[0][1] + xeet_bbox[2][1]) / 2
+            earned_center_y = (earned_bbox[0][1] + earned_bbox[2][1]) / 2
+            if abs(xeet_center_y - earned_center_y) < 60:
+                label_bbox = [
+                    [min(xeet_bbox[0][0], earned_bbox[0][0]), min(xeet_bbox[0][1], earned_bbox[0][1])],
+                    [max(xeet_bbox[1][0], earned_bbox[1][0]), min(xeet_bbox[1][1], earned_bbox[1][1])],
+                    [max(xeet_bbox[2][0], earned_bbox[2][0]), max(xeet_bbox[2][1], earned_bbox[2][1])],
+                    [min(xeet_bbox[3][0], earned_bbox[3][0]), max(xeet_bbox[3][1], earned_bbox[3][1])],
+                ]
+
     if not label_bbox:
         return None
 
