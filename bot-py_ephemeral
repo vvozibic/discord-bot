@@ -40,8 +40,13 @@ DISCORD_GUILD_ID = int(getattr(config, "DISCORD_GUILD_ID", os.getenv("DISCORD_GU
 VERIFY_CHANNEL_ID = int(getattr(config, "VERIFY_CHANNEL_ID", os.getenv("VERIFY_CHANNEL_ID", "0")) or 0)
 
 # OCR concurrency limiter (important under load)
-OCR_CONCURRENCY = int(getattr(config, "OCR_CONCURRENCY", os.getenv("OCR_CONCURRENCY", "4")) or 4)
+DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
+OCR_CONCURRENCY = int(getattr(config, "OCR_CONCURRENCY", os.getenv("OCR_CONCURRENCY", str(DEFAULT_OCR_CONCURRENCY))) or DEFAULT_OCR_CONCURRENCY)
 OCR_SEMAPHORE = asyncio.Semaphore(OCR_CONCURRENCY)
+OCR_CANVAS_SIZE = int(getattr(config, "OCR_CANVAS_SIZE", os.getenv("OCR_CANVAS_SIZE", "1920")) or 1920)
+OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "3")) or 3)
+OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE", "1")) or 1)
+OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
 
 # Role tier names (fixed, only 3 roles)
 TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
@@ -51,7 +56,20 @@ TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 # ============================================================
 # Note: EasyOCR uses PyTorch under the hood.
 # Keep reader global so models are loaded once.
-reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available(), verbose=False)
+
+def run_ocr(image_bytes: bytes):
+    # Faster defaults for CPU servers while keeping extraction-compatible output.
+    return reader.readtext(
+        image_bytes,
+        decoder="greedy",
+        beamWidth=OCR_BEAM_WIDTH,
+        batch_size=OCR_BATCH_SIZE,
+        workers=OCR_WORKERS,
+        paragraph=False,
+        detail=1,
+        canvas_size=OCR_CANVAS_SIZE,
+    )
 
 # ============================================================
 # Helper: atomic JSON (kept for compatibility)
@@ -557,7 +575,9 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
         # Concurrency limiter: avoid melting CPU under load.
         async with OCR_SEMAPHORE:
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(None, reader.readtext, image_bytes)
+            ocr_started = time.perf_counter()
+            results = await loop.run_in_executor(None, run_ocr, image_bytes)
+            print(f"OCR finished in {time.perf_counter() - ocr_started:.2f}s for user {interaction.user.id}")
 
         project = classify_project(results)
 
