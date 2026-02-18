@@ -3,6 +3,7 @@ import asyncio
 import re
 import config
 import easyocr
+import torch
 import io
 import os
 import json
@@ -50,7 +51,7 @@ TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 # ============================================================
 # Note: EasyOCR uses PyTorch under the hood.
 # Keep reader global so models are loaded once.
-reader = easyocr.Reader(['en'])
+reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
 
 # ============================================================
 # Helper: atomic JSON (kept for compatibility)
