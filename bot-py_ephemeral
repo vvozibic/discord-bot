@@ -44,7 +44,7 @@ DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
 OCR_CONCURRENCY = int(getattr(config, "OCR_CONCURRENCY", os.getenv("OCR_CONCURRENCY", str(DEFAULT_OCR_CONCURRENCY))) or DEFAULT_OCR_CONCURRENCY)
 OCR_SEMAPHORE = asyncio.Semaphore(OCR_CONCURRENCY)
 OCR_CANVAS_SIZE = int(getattr(config, "OCR_CANVAS_SIZE", os.getenv("OCR_CANVAS_SIZE", "1920")) or 1920)
-OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "5")) or 5)
+OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "3")) or 3)
 OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE", "1")) or 1)
 OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
 
@@ -171,25 +171,13 @@ def classify_project(results):
         return "Wallchain"
     if "kaito" in text_blob or "total yaps" in text_blob or "earned yaps" in text_blob:
         return "Kaito"
-    if "xeets earned" in text_blob or ("xeet" in text_blob and "earned" in text_blob):
+    if "xeet" in text_blob or "xeets earned" in text_blob:
         return "Xeet"
     if "cookie" in text_blob or "snaps earned" in text_blob or "total snaps" in text_blob:
         return "Cookie"
     if "kol score" in text_blob or "mindoshare" in text_blob:
         return "Mindoshare"
     return "Unknown"
-
-def _extract_numeric_token(text: str, allow_decimal: bool = True):
-    clean = text.strip().replace(",", "")
-    if not clean:
-        return None
-    match = re.search(r"\d+(?:\.\d+)?", clean)
-    if not match:
-        return None
-    token = match.group(0)
-    if (not allow_decimal) and ("." in token):
-        return None
-    return token
 
 def extract_mindoshare_score(results):
     kw_bbox = None
@@ -217,135 +205,30 @@ def extract_mindoshare_score(results):
     return candidates[0][2] if candidates else None
 
 def extract_wallchain_score(results):
-    quack_bbox = None
-    balance_bbox = None
-    quack_balance_bbox = None
     score_bbox = None
-    top_bbox = None
     for (bbox, text, prob) in results:
-        t = text.lower().strip()
-        if "quack balance" in t:
-            quack_balance_bbox = bbox
-        elif "quack" in t and quack_bbox is None:
-            quack_bbox = bbox
-        elif "balance" in t and balance_bbox is None:
-            balance_bbox = bbox
-        if t == "score":
+        if text.strip() == "Score":
             score_bbox = bbox
-        if ("top" in t and "%" in t) or t == "top":
-            top_bbox = bbox
-
-    if quack_balance_bbox is None and quack_bbox and balance_bbox:
-        quack_center_y = (quack_bbox[0][1] + quack_bbox[2][1]) / 2
-        balance_center_y = (balance_bbox[0][1] + balance_bbox[2][1]) / 2
-        if abs(quack_center_y - balance_center_y) < 50:
-            quack_balance_bbox = [
-                [min(quack_bbox[0][0], balance_bbox[0][0]), min(quack_bbox[0][1], balance_bbox[0][1])],
-                [max(quack_bbox[1][0], balance_bbox[1][0]), min(quack_bbox[1][1], balance_bbox[1][1])],
-                [max(quack_bbox[2][0], balance_bbox[2][0]), max(quack_bbox[2][1], balance_bbox[2][1])],
-                [min(quack_bbox[3][0], balance_bbox[3][0]), max(quack_bbox[3][1], balance_bbox[3][1])],
-            ]
-
-    # Wallchain target metric: Quack Balance.
-    # Prefer numeric value near the "Quack Balance" label before any score gauge fallback.
-    if quack_balance_bbox:
-        label_left_x = min(p[0] for p in quack_balance_bbox)
-        label_right_x = max(p[0] for p in quack_balance_bbox)
-        label_center_x = (label_left_x + label_right_x) / 2
-        label_bottom_y = max(quack_balance_bbox[2][1], quack_balance_bbox[3][1])
-        balance_candidates = []
-        for (bbox, text, prob) in results:
-            if "%" in text:
-                continue
-            clean_text = _extract_numeric_token(text, allow_decimal=True)
-            if not clean_text:
-                continue
-            try:
-                value = float(clean_text)
-            except ValueError:
-                continue
-            if value <= 0:
-                continue
-
-            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
-            cand_top_y = min(bbox[0][1], bbox[1][1])
-            cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
-
-            if (
-                label_left_x - 80 <= cand_center_x <= label_right_x + 420
-                and label_bottom_y - 15 <= cand_top_y <= label_bottom_y + 260
-            ):
-                vertical_dist = abs(cand_top_y - (label_bottom_y + 35))
-                horizontal_dist = abs(cand_center_x - (label_center_x - 20))
-                decimal_bonus = 1 if "." in clean_text else 0
-                balance_candidates.append((decimal_bonus, cand_height, -(vertical_dist + horizontal_dist), clean_text))
-
-        balance_candidates.sort(key=lambda x: (-x[0], -x[1], -x[2]))
-        if balance_candidates:
-            return balance_candidates[0][3]
-
-    # Wallchain usually renders score right above "Top xx%".
-    # Anchor on that label first because dial ticks (0/50/100/200/...) are frequent OCR false picks.
-    if top_bbox:
-        top_center_x = (top_bbox[0][0] + top_bbox[1][0]) / 2
-        top_top_y = min(top_bbox[0][1], top_bbox[1][1])
-        top_candidates = []
-        for (bbox, text, prob) in results:
-            clean_text = _extract_numeric_token(text, allow_decimal=False)
-            if not clean_text:
-                continue
-            try:
-                value = int(clean_text)
-            except ValueError:
-                continue
-            if value <= 0:
-                continue
-            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
-            cand_bottom_y = max(bbox[2][1], bbox[3][1])
-            cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
-            if abs(cand_center_x - top_center_x) < 180 and cand_bottom_y <= top_top_y:
-                dist = top_top_y - cand_bottom_y
-                if dist <= 180:
-                    top_candidates.append((cand_height, dist, clean_text))
-
-        top_candidates.sort(key=lambda x: (-x[0], x[1]))
-        if top_candidates:
-            return top_candidates[0][2]
-
+            break
     if not score_bbox:
         return None
 
-    score_left_x = min(p[0] for p in score_bbox)
-    score_right_x = max(p[0] for p in score_bbox)
-    score_bottom_y = max(score_bbox[2][1], score_bbox[3][1])
-    search_left_x = score_left_x - 40
-    search_right_x = score_right_x + 340
-    search_top_y = score_bottom_y + 10
+    score_center_x = (score_bbox[0][0] + score_bbox[1][0]) / 2
+    score_bottom_y = score_bbox[2][1]
 
     candidates = []
     for (bbox, text, prob) in results:
-        clean_text = _extract_numeric_token(text, allow_decimal=False)
-        if not clean_text:
-            continue
-        try:
-            value = int(clean_text)
-        except ValueError:
-            continue
-        if value <= 0:
-            continue
+        clean_text = text.strip()
+        if re.match(r'^\d+(\.\d+)?$', clean_text):
+            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
+            cand_top_y = bbox[0][1]
+            cand_height = bbox[2][1] - bbox[0][1]
+            if abs(cand_center_x - score_center_x) < 100 and cand_top_y >= score_bottom_y:
+                dist = cand_top_y - score_bottom_y
+                candidates.append((cand_height, dist, clean_text))
 
-        cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
-        cand_top_y = min(bbox[0][1], bbox[1][1])
-        cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
-
-        if search_left_x <= cand_center_x <= search_right_x and cand_top_y >= search_top_y:
-            dist = cand_top_y - search_top_y
-            if dist <= 300:
-                digit_bonus = 1 if len(clean_text) >= 2 else 0
-                candidates.append((digit_bonus, cand_height, dist, clean_text))
-
-    candidates.sort(key=lambda x: (-x[0], -x[1], x[2]))
-    return candidates[0][3] if candidates else None
+    candidates.sort(key=lambda x: (-x[0], x[1]))
+    return candidates[0][2] if candidates else None
 
 def extract_kaito_score(results):
     total_bbox = None
@@ -393,35 +276,16 @@ def extract_kaito_score(results):
 
 def extract_xeet_score(results):
     label_bbox = None
-
-    # Require an explicit Xeets earned confirmation to avoid false positives.
     for (bbox, text, prob) in results:
         t = text.lower().strip()
         if "xeets earned" in t or ("xeet" in t and "earned" in t):
             label_bbox = bbox
             break
-
-    # OCR may split label into two tokens ("Xeets" and "earned").
     if not label_bbox:
-        xeet_bbox = None
-        earned_bbox = None
         for (bbox, text, prob) in results:
-            t = text.lower().strip()
-            if xeet_bbox is None and "xeet" in t:
-                xeet_bbox = bbox
-            if earned_bbox is None and "earned" in t:
-                earned_bbox = bbox
-        if xeet_bbox and earned_bbox:
-            xeet_center_y = (xeet_bbox[0][1] + xeet_bbox[2][1]) / 2
-            earned_center_y = (earned_bbox[0][1] + earned_bbox[2][1]) / 2
-            if abs(xeet_center_y - earned_center_y) < 60:
-                label_bbox = [
-                    [min(xeet_bbox[0][0], earned_bbox[0][0]), min(xeet_bbox[0][1], earned_bbox[0][1])],
-                    [max(xeet_bbox[1][0], earned_bbox[1][0]), min(xeet_bbox[1][1], earned_bbox[1][1])],
-                    [max(xeet_bbox[2][0], earned_bbox[2][0]), max(xeet_bbox[2][1], earned_bbox[2][1])],
-                    [min(xeet_bbox[3][0], earned_bbox[3][0]), max(xeet_bbox[3][1], earned_bbox[3][1])],
-                ]
-
+            if "earned" in text.lower().strip():
+                label_bbox = bbox
+                break
     if not label_bbox:
         return None
 
@@ -444,70 +308,35 @@ def extract_xeet_score(results):
 
 def extract_cookie_score(results):
     label_bbox = None
-    total_bbox = None
-    snaps_bbox = None
-    earned_bbox = None
-
     for (bbox, text, prob) in results:
         t = text.lower().strip()
-        if "total snaps earned" in t:
+        if "total snaps earned" in t or "snaps earned" in t:
             label_bbox = bbox
             break
-        if total_bbox is None and t == "total":
-            total_bbox = bbox
-        if snaps_bbox is None and "snaps" in t:
-            snaps_bbox = bbox
-        if earned_bbox is None and "earned" in t:
-            earned_bbox = bbox
-
-    # OCR can split "Total snaps earned" into separate tokens.
-    if label_bbox is None and total_bbox and snaps_bbox and earned_bbox:
-        y_total = (total_bbox[0][1] + total_bbox[2][1]) / 2
-        y_snaps = (snaps_bbox[0][1] + snaps_bbox[2][1]) / 2
-        y_earned = (earned_bbox[0][1] + earned_bbox[2][1]) / 2
-        if max(abs(y_total - y_snaps), abs(y_snaps - y_earned), abs(y_total - y_earned)) < 70:
-            label_bbox = [
-                [min(total_bbox[0][0], snaps_bbox[0][0], earned_bbox[0][0]), min(total_bbox[0][1], snaps_bbox[0][1], earned_bbox[0][1])],
-                [max(total_bbox[1][0], snaps_bbox[1][0], earned_bbox[1][0]), min(total_bbox[1][1], snaps_bbox[1][1], earned_bbox[1][1])],
-                [max(total_bbox[2][0], snaps_bbox[2][0], earned_bbox[2][0]), max(total_bbox[2][1], snaps_bbox[2][1], earned_bbox[2][1])],
-                [min(total_bbox[3][0], snaps_bbox[3][0], earned_bbox[3][0]), max(total_bbox[3][1], snaps_bbox[3][1], earned_bbox[3][1])],
-            ]
-
+    if not label_bbox:
+        for (bbox, text, prob) in results:
+            t = text.lower().strip()
+            if "snaps" in t or "earned" in t:
+                label_bbox = bbox
+                break
     if not label_bbox:
         return None
 
-    label_left_x = min(p[0] for p in label_bbox)
-    label_right_x = max(p[0] for p in label_bbox)
-    label_center_x = (label_left_x + label_right_x) / 2
-    label_bottom_y = max(label_bbox[2][1], label_bbox[3][1])
+    label_center_x = (label_bbox[0][0] + label_bbox[1][0]) / 2
+    label_center_y = (label_bbox[0][1] + label_bbox[2][1]) / 2
 
     candidates = []
     for (bbox, text, prob) in results:
-        if "%" in text:
-            continue
-        clean_text = _extract_numeric_token(text, allow_decimal=True)
-        if not clean_text:
-            continue
-        try:
-            value = float(clean_text)
-        except ValueError:
-            continue
-        if value <= 0:
-            continue
+        clean_text = text.strip().replace(',', '')
+        if re.match(r'^\d+(\.\d+)?$', clean_text):
+            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
+            cand_center_y = (bbox[0][1] + bbox[2][1]) / 2
+            cand_height = bbox[2][1] - bbox[0][1]
+            dist = ((cand_center_x - label_center_x)**2 + (cand_center_y - label_center_y)**2)**0.5
+            if dist < 300:
+                candidates.append((cand_height, dist, clean_text))
 
-        cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
-        cand_top_y = min(bbox[0][1], bbox[1][1])
-        cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
-
-        if (
-            label_left_x - 120 <= cand_center_x <= label_right_x + 260
-            and label_bottom_y - 20 <= cand_top_y <= label_bottom_y + 260
-        ):
-            vertical_dist = abs(cand_top_y - (label_bottom_y + 35))
-            horizontal_dist = abs(cand_center_x - label_center_x)
-            candidates.append((vertical_dist + 0.6 * horizontal_dist, -cand_height, clean_text))
-
-    candidates.sort(key=lambda x: (x[0], x[1]))
+    candidates.sort(key=lambda x: (-x[0], x[1]))
     return candidates[0][2] if candidates else None
 
 def extract_handle(results):
