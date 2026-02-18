@@ -444,35 +444,70 @@ def extract_xeet_score(results):
 
 def extract_cookie_score(results):
     label_bbox = None
+    total_bbox = None
+    snaps_bbox = None
+    earned_bbox = None
+
     for (bbox, text, prob) in results:
         t = text.lower().strip()
-        if "total snaps earned" in t or "snaps earned" in t:
+        if "total snaps earned" in t:
             label_bbox = bbox
             break
-    if not label_bbox:
-        for (bbox, text, prob) in results:
-            t = text.lower().strip()
-            if "snaps" in t or "earned" in t:
-                label_bbox = bbox
-                break
+        if total_bbox is None and t == "total":
+            total_bbox = bbox
+        if snaps_bbox is None and "snaps" in t:
+            snaps_bbox = bbox
+        if earned_bbox is None and "earned" in t:
+            earned_bbox = bbox
+
+    # OCR can split "Total snaps earned" into separate tokens.
+    if label_bbox is None and total_bbox and snaps_bbox and earned_bbox:
+        y_total = (total_bbox[0][1] + total_bbox[2][1]) / 2
+        y_snaps = (snaps_bbox[0][1] + snaps_bbox[2][1]) / 2
+        y_earned = (earned_bbox[0][1] + earned_bbox[2][1]) / 2
+        if max(abs(y_total - y_snaps), abs(y_snaps - y_earned), abs(y_total - y_earned)) < 70:
+            label_bbox = [
+                [min(total_bbox[0][0], snaps_bbox[0][0], earned_bbox[0][0]), min(total_bbox[0][1], snaps_bbox[0][1], earned_bbox[0][1])],
+                [max(total_bbox[1][0], snaps_bbox[1][0], earned_bbox[1][0]), min(total_bbox[1][1], snaps_bbox[1][1], earned_bbox[1][1])],
+                [max(total_bbox[2][0], snaps_bbox[2][0], earned_bbox[2][0]), max(total_bbox[2][1], snaps_bbox[2][1], earned_bbox[2][1])],
+                [min(total_bbox[3][0], snaps_bbox[3][0], earned_bbox[3][0]), max(total_bbox[3][1], snaps_bbox[3][1], earned_bbox[3][1])],
+            ]
+
     if not label_bbox:
         return None
 
-    label_center_x = (label_bbox[0][0] + label_bbox[1][0]) / 2
-    label_center_y = (label_bbox[0][1] + label_bbox[2][1]) / 2
+    label_left_x = min(p[0] for p in label_bbox)
+    label_right_x = max(p[0] for p in label_bbox)
+    label_center_x = (label_left_x + label_right_x) / 2
+    label_bottom_y = max(label_bbox[2][1], label_bbox[3][1])
 
     candidates = []
     for (bbox, text, prob) in results:
-        clean_text = text.strip().replace(',', '')
-        if re.match(r'^\d+(\.\d+)?$', clean_text):
-            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
-            cand_center_y = (bbox[0][1] + bbox[2][1]) / 2
-            cand_height = bbox[2][1] - bbox[0][1]
-            dist = ((cand_center_x - label_center_x)**2 + (cand_center_y - label_center_y)**2)**0.5
-            if dist < 300:
-                candidates.append((cand_height, dist, clean_text))
+        if "%" in text:
+            continue
+        clean_text = _extract_numeric_token(text, allow_decimal=True)
+        if not clean_text:
+            continue
+        try:
+            value = float(clean_text)
+        except ValueError:
+            continue
+        if value <= 0:
+            continue
 
-    candidates.sort(key=lambda x: (-x[0], x[1]))
+        cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
+        cand_top_y = min(bbox[0][1], bbox[1][1])
+        cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
+
+        if (
+            label_left_x - 120 <= cand_center_x <= label_right_x + 260
+            and label_bottom_y - 20 <= cand_top_y <= label_bottom_y + 260
+        ):
+            vertical_dist = abs(cand_top_y - (label_bottom_y + 35))
+            horizontal_dist = abs(cand_center_x - label_center_x)
+            candidates.append((vertical_dist + 0.6 * horizontal_dist, -cand_height, clean_text))
+
+    candidates.sort(key=lambda x: (x[0], x[1]))
     return candidates[0][2] if candidates else None
 
 def extract_handle(results):
