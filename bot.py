@@ -522,12 +522,14 @@ def build_result_embed(member: discord.Member, x_link: dict | None, result: Veri
 async def xlink_cmd(interaction: discord.Interaction):
     if not interaction.user:
         return
+    await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     link = await create_signed_start_link(str(interaction.user.id))
     embed, view = build_link_embed(link)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 @tree.command(name="xstatus", description="Show your linked X account status")
 async def xstatus_cmd(interaction: discord.Interaction):
+    await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     obj = await link_get(str(interaction.user.id))
     if not obj:
         await interaction.response.send_message("You have not linked X yet. Use `/xlink`.", ephemeral=True)
@@ -539,6 +541,7 @@ async def xstatus_cmd(interaction: discord.Interaction):
 
 @tree.command(name="xunlink", description="Unlink your X account")
 async def xunlink_cmd(interaction: discord.Interaction):
+    await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     removed = await link_delete(str(interaction.user.id))
     await interaction.response.send_message("✅ Unlinked." if removed else "You were not linked.", ephemeral=True)
 
@@ -557,6 +560,8 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
     if not (image.content_type and image.content_type.startswith("image/")):
         await interaction.response.send_message("Please upload a valid image file.", ephemeral=True)
         return
+
+    await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
 
     # Gate: must be linked
     x_link = await link_get(str(interaction.user.id))

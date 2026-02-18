@@ -301,6 +301,11 @@ async def api_linked(discord_id: str = Query(...)):
     obj = await database.get_link(discord_id)
     return {"linked": bool(obj), "data": obj}
 
+@app.get("/api/x/metrics")
+async def api_metrics(discord_id: str = Query(...)):
+    obj = await database.get_user_metrics(discord_id)
+    return {"found": bool(obj), "data": obj}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", "8000"))
