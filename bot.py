@@ -44,7 +44,7 @@ DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
 OCR_CONCURRENCY = int(getattr(config, "OCR_CONCURRENCY", os.getenv("OCR_CONCURRENCY", str(DEFAULT_OCR_CONCURRENCY))) or DEFAULT_OCR_CONCURRENCY)
 OCR_SEMAPHORE = asyncio.Semaphore(OCR_CONCURRENCY)
 OCR_CANVAS_SIZE = int(getattr(config, "OCR_CANVAS_SIZE", os.getenv("OCR_CANVAS_SIZE", "1920")) or 1920)
-OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "3")) or 3)
+OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "5")) or 5)
 OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE", "1")) or 1)
 OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
 
