@@ -217,14 +217,72 @@ def extract_mindoshare_score(results):
     return candidates[0][2] if candidates else None
 
 def extract_wallchain_score(results):
+    quack_bbox = None
+    balance_bbox = None
+    quack_balance_bbox = None
     score_bbox = None
     top_bbox = None
     for (bbox, text, prob) in results:
         t = text.lower().strip()
+        if "quack balance" in t:
+            quack_balance_bbox = bbox
+        elif "quack" in t and quack_bbox is None:
+            quack_bbox = bbox
+        elif "balance" in t and balance_bbox is None:
+            balance_bbox = bbox
         if t == "score":
             score_bbox = bbox
         if ("top" in t and "%" in t) or t == "top":
             top_bbox = bbox
+
+    if quack_balance_bbox is None and quack_bbox and balance_bbox:
+        quack_center_y = (quack_bbox[0][1] + quack_bbox[2][1]) / 2
+        balance_center_y = (balance_bbox[0][1] + balance_bbox[2][1]) / 2
+        if abs(quack_center_y - balance_center_y) < 50:
+            quack_balance_bbox = [
+                [min(quack_bbox[0][0], balance_bbox[0][0]), min(quack_bbox[0][1], balance_bbox[0][1])],
+                [max(quack_bbox[1][0], balance_bbox[1][0]), min(quack_bbox[1][1], balance_bbox[1][1])],
+                [max(quack_bbox[2][0], balance_bbox[2][0]), max(quack_bbox[2][1], balance_bbox[2][1])],
+                [min(quack_bbox[3][0], balance_bbox[3][0]), max(quack_bbox[3][1], balance_bbox[3][1])],
+            ]
+
+    # Wallchain target metric: Quack Balance.
+    # Prefer numeric value near the "Quack Balance" label before any score gauge fallback.
+    if quack_balance_bbox:
+        label_left_x = min(p[0] for p in quack_balance_bbox)
+        label_right_x = max(p[0] for p in quack_balance_bbox)
+        label_center_x = (label_left_x + label_right_x) / 2
+        label_bottom_y = max(quack_balance_bbox[2][1], quack_balance_bbox[3][1])
+        balance_candidates = []
+        for (bbox, text, prob) in results:
+            if "%" in text:
+                continue
+            clean_text = _extract_numeric_token(text, allow_decimal=True)
+            if not clean_text:
+                continue
+            try:
+                value = float(clean_text)
+            except ValueError:
+                continue
+            if value <= 0:
+                continue
+
+            cand_center_x = (bbox[0][0] + bbox[1][0]) / 2
+            cand_top_y = min(bbox[0][1], bbox[1][1])
+            cand_height = max(bbox[2][1], bbox[3][1]) - min(bbox[0][1], bbox[1][1])
+
+            if (
+                label_left_x - 80 <= cand_center_x <= label_right_x + 420
+                and label_bottom_y - 15 <= cand_top_y <= label_bottom_y + 260
+            ):
+                vertical_dist = abs(cand_top_y - (label_bottom_y + 35))
+                horizontal_dist = abs(cand_center_x - (label_center_x - 20))
+                decimal_bonus = 1 if "." in clean_text else 0
+                balance_candidates.append((decimal_bonus, cand_height, -(vertical_dist + horizontal_dist), clean_text))
+
+        balance_candidates.sort(key=lambda x: (-x[0], -x[1], -x[2]))
+        if balance_candidates:
+            return balance_candidates[0][3]
 
     # Wallchain usually renders score right above "Top xx%".
     # Anchor on that label first because dial ticks (0/50/100/200/...) are frequent OCR false picks.
