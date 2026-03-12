@@ -634,6 +634,35 @@ async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool
 
     return True, "Role assigned."
 
+class VerifyPromptView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Use /verify", style=discord.ButtonStyle.success, emoji="📸")
+    async def use_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "Please run `/verify` and attach photo of your previous score.",
+            ephemeral=True,
+        )
+
+class LinkActionView(discord.ui.View):
+    def __init__(self, link: str):
+        super().__init__(timeout=LINK_TTL)
+        self.add_item(discord.ui.Button(
+            label="Connect X Account",
+            style=discord.ButtonStyle.link,
+            url=link,
+            emoji="🔵"
+        ))
+
+    @discord.ui.button(label="Verification", style=discord.ButtonStyle.primary, emoji="✅")
+    async def verification_prompt(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            description="Press button below for verification and attach photo of your previous score",
+            color=0x57F287,
+        )
+        await interaction.response.send_message(embed=embed, view=VerifyPromptView(), ephemeral=True)
+
 def build_link_embed(link: str) -> tuple[discord.Embed, discord.ui.View]:
     embed = discord.Embed(
         title="🔗 Link Your X Account",
@@ -645,13 +674,7 @@ def build_link_embed(link: str) -> tuple[discord.Embed, discord.ui.View]:
     )
     embed.set_footer(text="⏱️ Link expires in 10 minutes")
 
-    view = discord.ui.View()
-    view.add_item(discord.ui.Button(
-        label="Connect X Account",
-        style=discord.ButtonStyle.link,
-        url=link,
-        emoji="🔵"
-    ))
+    view = LinkActionView(link)
     return embed, view
 
 def build_result_embed(member: discord.Member, x_link: dict | None, result: VerificationResult) -> discord.Embed:
