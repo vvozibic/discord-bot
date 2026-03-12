@@ -1,3 +1,4 @@
+```python
 import discord
 import asyncio
 import re
@@ -41,7 +42,13 @@ VERIFY_CHANNEL_ID = int(getattr(config, "VERIFY_CHANNEL_ID", os.getenv("VERIFY_C
 
 # OCR concurrency limiter (important under load)
 DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
-OCR_CONCURRENCY = int(getattr(config, "OCR_CONCURRENCY", os.getenv("OCR_CONCURRENCY", str(DEFAULT_OCR_CONCURRENCY))) or DEFAULT_OCR_CONCURRENCY)
+OCR_CONCURRENCY = int(
+    getattr(
+        config,
+        "OCR_CONCURRENCY",
+        os.getenv("OCR_CONCURRENCY", str(DEFAULT_OCR_CONCURRENCY))
+    ) or DEFAULT_OCR_CONCURRENCY
+)
 OCR_SEMAPHORE = asyncio.Semaphore(OCR_CONCURRENCY)
 OCR_CANVAS_SIZE = int(getattr(config, "OCR_CANVAS_SIZE", os.getenv("OCR_CANVAS_SIZE", "1920")) or 1920)
 OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "5")) or 5)
@@ -98,7 +105,7 @@ def _atomic_write_json_sync(path: str, data: dict):
         try:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-        except:
+        except Exception:
             pass
 
 async def _cleanup_pending_locked(pending: dict) -> dict:
@@ -363,7 +370,7 @@ def extract_kaito_score(results):
 
     label_bbox = None
     if total_bbox and yaps_bbox:
-        dist_x = abs((total_bbox[0][0] + total_bbox[1][0])/2 - (yaps_bbox[0][0] + yaps_bbox[1][0])/2)
+        dist_x = abs((total_bbox[0][0] + total_bbox[1][0]) / 2 - (yaps_bbox[0][0] + yaps_bbox[1][0]) / 2)
         dist_y = abs(total_bbox[2][1] - yaps_bbox[0][1])
         label_bbox = yaps_bbox if (dist_x < 150 and dist_y < 50) else yaps_bbox
     elif yaps_bbox:
@@ -581,6 +588,28 @@ intents.message_content = False
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
+# name -> synced app command object
+SYNCED_COMMANDS = {}
+
+def slash_cmd_mention(name: str) -> str:
+    """
+    Return a clickable slash-command mention like </verify:123...>.
+    Falls back to plain `/name` if the command has not been synced yet.
+    """
+    cmd = SYNCED_COMMANDS.get(name)
+    if not cmd:
+        return f"`/{name}`"
+
+    mention = getattr(cmd, "mention", None)
+    if mention:
+        return mention
+
+    cmd_id = getattr(cmd, "id", None)
+    if cmd_id:
+        return f"</{name}:{cmd_id}>"
+
+    return f"`/{name}`"
+
 def _require_verify_channel(interaction: discord.Interaction) -> bool:
     return (VERIFY_CHANNEL_ID == 0) or (interaction.channel_id == VERIFY_CHANNEL_ID)
 
@@ -613,7 +642,10 @@ async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool
     target_role = roles_map.get(role_name)
 
     if target_role is None:
-        return False, "I don't have permission to create/manage roles. Please grant **Manage Roles** and place my bot role above the tier roles."
+        return False, (
+            "I don't have permission to create/manage roles. "
+            "Please grant **Manage Roles** and place my bot role above the tier roles."
+        )
 
     # Remove other tier roles (if present)
     to_remove = []
@@ -630,62 +662,51 @@ async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool
         if target_role not in member.roles:
             await member.add_roles(target_role, reason="Verifier tier role assignment")
     except discord.Forbidden:
-        return False, "I don't have permission to modify your roles. Check role hierarchy (my role must be above tier roles)."
+        return False, (
+            "I don't have permission to modify your roles. "
+            "Check role hierarchy (my role must be above tier roles)."
+        )
 
     return True, "Role assigned."
-
-class VerifyPromptView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=300)
-
-    @discord.ui.button(label="Use /verify", style=discord.ButtonStyle.success, emoji="📸")
-    async def use_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            "Please run `/verify` and attach photo of your previous score.",
-            ephemeral=True,
-        )
-
-class LinkActionView(discord.ui.View):
-    def __init__(self, link: str):
-        super().__init__(timeout=LINK_TTL)
-        self.add_item(discord.ui.Button(
-            label="Connect X Account",
-            style=discord.ButtonStyle.link,
-            url=link,
-            emoji="🔵"
-        ))
-
-    @discord.ui.button(label="Verification", style=discord.ButtonStyle.primary, emoji="✅")
-    async def verification_prompt(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            description="Press button below for verification and attach photo of your previous score",
-            color=0x57F287,
-        )
-        await interaction.response.send_message(embed=embed, view=VerifyPromptView(), ephemeral=True)
 
 def build_link_embed(link: str) -> tuple[discord.Embed, discord.ui.View]:
     embed = discord.Embed(
         title="🔗 Link Your X Account",
         description=(
-            "To use `/verify`, you must link your X account.\n\n"
-            "Click **Connect X Account** below. After you see ✅ Success in your browser, come back and run `/verify`."
+            "To use verification, you must link your X account.\n\n"
+            "Click **Connect X Account** below. After you see ✅ Success in your browser, "
+            "come back here and use the verification command mention shown in the message."
         ),
         color=0x1DA1F2
     )
     embed.set_footer(text="⏱️ Link expires in 10 minutes")
 
-    view = LinkActionView(link)
+    view = discord.ui.View()
+    view.add_item(discord.ui.Button(
+        label="Connect X Account",
+        style=discord.ButtonStyle.link,
+        url=link,
+        emoji="🔵"
+    ))
     return embed, view
 
 def build_result_embed(member: discord.Member, x_link: dict | None, result: VerificationResult) -> discord.Embed:
     if result.handle_match_error:
-        desc = f"❌ **Identity Mismatch**\n{result.handle_match_error}\nThis screenshot does not belong to your linked account."
+        desc = (
+            f"❌ **Identity Mismatch**\n"
+            f"{result.handle_match_error}\n"
+            f"This screenshot does not belong to your linked account."
+        )
         color = 0xED4245
     elif result.detected_score:
         desc = f"✅ **Verification Successful**\nFound **{result.project}** score!"
         color = 0x57F287
     else:
-        desc = f"❌ **Verification Failed**\nCould not detect a **{result.project}** score.\nPlease ensure the image is clear and uncropped."
+        desc = (
+            f"❌ **Verification Failed**\n"
+            f"Could not detect a **{result.project}** score.\n"
+            f"Please ensure the image is clear and uncropped."
+        )
         color = 0xED4245
 
     embed = discord.Embed(description=desc, color=color)
@@ -699,14 +720,19 @@ def build_result_embed(member: discord.Member, x_link: dict | None, result: Veri
     if x_link:
         x_user = x_link.get("x_username")
         x_handle = f"[@{x_user}](https://x.com/{x_user})"
-        is_verified = bool(x_link.get("verified")) or (str(x_link.get("verified_type") or "").lower() in {"blue", "business", "government"})
+        is_verified = bool(x_link.get("verified")) or (
+            str(x_link.get("verified_type") or "").lower() in {"blue", "business", "government"}
+        )
         if is_verified:
             x_handle += " ☑️"
         embed.add_field(name="🔗 X Account", value=x_handle, inline=False)
     else:
         embed.add_field(name="🔗 X Account", value="*Not Linked*", inline=False)
 
-    embed.set_footer(text="Mindo AI Verifier", icon_url=client.user.display_avatar.url if client.user else None)
+    embed.set_footer(
+        text="Mindo AI Verifier",
+        icon_url=client.user.display_avatar.url if client.user else None
+    )
     return embed
 
 # -----------------------------
@@ -716,10 +742,21 @@ def build_result_embed(member: discord.Member, x_link: dict | None, result: Veri
 async def xlink_cmd(interaction: discord.Interaction):
     if not interaction.user:
         return
+
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     link = await create_signed_start_link(str(interaction.user.id))
     embed, view = build_link_embed(link)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    verify_mention = slash_cmd_mention("verify")
+
+    await interaction.response.send_message(
+        content=(
+            "After you finish linking in the browser, click "
+            f"{verify_mention} to auto-open the verification command."
+        ),
+        embed=embed,
+        view=view,
+        ephemeral=True
+    )
 
 @tree.command(name="xstatus", description="Show your linked X account status")
 async def xstatus_cmd(interaction: discord.Interaction):
@@ -728,8 +765,13 @@ async def xstatus_cmd(interaction: discord.Interaction):
     if not obj:
         await interaction.response.send_message("You have not linked X yet. Use `/xlink`.", ephemeral=True)
         return
+
+    verify_mention = slash_cmd_mention("verify")
+
     await interaction.response.send_message(
-        f"✅ Linked X: @{obj.get('x_username')}\nVerified: {obj.get('verified')} | Type: {obj.get('verified_type')}",
+        f"✅ Linked X: @{obj.get('x_username')}\n"
+        f"Verified: {obj.get('verified')} | Type: {obj.get('verified_type')}\n\n"
+        f"Now click {verify_mention} to start verification.",
         ephemeral=True
     )
 
@@ -748,7 +790,10 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
         return
 
     if not _require_verify_channel(interaction):
-        await interaction.response.send_message("Please use `/verify` in the designated verification channel.", ephemeral=True)
+        await interaction.response.send_message(
+            "Please use `/verify` in the designated verification channel.",
+            ephemeral=True
+        )
         return
 
     if not (image.content_type and image.content_type.startswith("image/")):
@@ -762,7 +807,17 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
     if not x_link:
         link = await create_signed_start_link(str(interaction.user.id))
         embed, view = build_link_embed(link)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        verify_mention = slash_cmd_mention("verify")
+
+        await interaction.response.send_message(
+            content=(
+                "First link your X account below. After that, click "
+                f"{verify_mention} to auto-open the verification command."
+            ),
+            embed=embed,
+            view=view,
+            ephemeral=True
+        )
         return
 
     # Immediately acknowledge (ephemeral)
@@ -794,7 +849,11 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
             score_val = extract_mindoshare_score(results)
         else:
             # Fallback sequence
-            score_val = extract_mindoshare_score(results) or extract_wallchain_score(results) or extract_kaito_score(results)
+            score_val = (
+                extract_mindoshare_score(results)
+                or extract_wallchain_score(results)
+                or extract_kaito_score(results)
+            )
 
         # Handle / identity check
         handle_error = None
@@ -840,16 +899,22 @@ async def on_ready():
     await database.init_db()
     print("Database initialized.")
 
-    # Sync commands
     try:
         if DISCORD_GUILD_ID:
             guild_obj = discord.Object(id=DISCORD_GUILD_ID)
             tree.copy_global_to(guild=guild_obj)
-            await tree.sync(guild=guild_obj)
+            synced = await tree.sync(guild=guild_obj)
             print(f"Slash commands synced to guild {DISCORD_GUILD_ID}.")
         else:
-            await tree.sync()
+            synced = await tree.sync()
             print("Slash commands synced globally (may take time to appear).")
+
+        SYNCED_COMMANDS.clear()
+        for cmd in synced:
+            SYNCED_COMMANDS[cmd.name] = cmd
+
+        print("Cached slash command mentions:", ", ".join(SYNCED_COMMANDS.keys()))
+
     except Exception as e:
         print(f"Failed to sync slash commands: {e}")
 
@@ -863,3 +928,4 @@ if __name__ == "__main__":
         print("Error: X_CLIENT_ID / X_REDIRECT_URI missing. Add them to config/env.")
     else:
         client.run(DISCORD_TOKEN)
+```
