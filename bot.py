@@ -1,61 +1,3 @@
-```python
-import discord
-import asyncio
-import re
-import config
-import easyocr
-import torch
-import io
-import os
-import json
-import time
-import tempfile
-import secrets
-import urllib.parse
-import hashlib
-import base64
-import aiohttp
-import hmac
-import database
-
-# ============================================================
-# Config
-# ============================================================
-
-# ---- X OAuth2 ----
-X_CLIENT_ID = getattr(config, "X_CLIENT_ID", os.getenv("X_CLIENT_ID", "")).strip()
-X_CLIENT_SECRET = getattr(config, "X_CLIENT_SECRET", os.getenv("X_CLIENT_SECRET", "")).strip()
-X_REDIRECT_URI = getattr(config, "X_REDIRECT_URI", os.getenv("X_REDIRECT_URI", "")).strip()
-X_SCOPES = getattr(config, "X_SCOPES", os.getenv("X_SCOPES", "users.read tweet.read")).strip()
-
-# ---- Signed link settings ----
-LINK_SECRET = getattr(config, "LINK_SECRET", os.getenv("LINK_SECRET", "default-secret-change-me")).strip()
-LINK_TTL = 10 * 60  # 10 minutes
-
-# ---- Discord ----
-DISCORD_TOKEN = getattr(config, "DISCORD_TOKEN", os.getenv("DISCORD_TOKEN", "")).strip()
-# For instant slash commands in a test server, set DISCORD_GUILD_ID (recommended).
-DISCORD_GUILD_ID = int(getattr(config, "DISCORD_GUILD_ID", os.getenv("DISCORD_GUILD_ID", "0")) or 0)
-
-# Optional: restrict /verify to one channel (0 = allow everywhere)
-VERIFY_CHANNEL_ID = int(getattr(config, "VERIFY_CHANNEL_ID", os.getenv("VERIFY_CHANNEL_ID", "0")) or 0)
-
-# OCR concurrency limiter (important under load)
-DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
-OCR_CONCURRENCY = int(
-    getattr(
-        config,
-        "OCR_CONCURRENCY",
-        os.getenv("OCR_CONCURRENCY", str(DEFAULT_OCR_CONCURRENCY))
-    ) or DEFAULT_OCR_CONCURRENCY
-)
-OCR_SEMAPHORE = asyncio.Semaphore(OCR_CONCURRENCY)
-OCR_CANVAS_SIZE = int(getattr(config, "OCR_CANVAS_SIZE", os.getenv("OCR_CANVAS_SIZE", "1920")) or 1920)
-OCR_BEAM_WIDTH = int(getattr(config, "OCR_BEAM_WIDTH", os.getenv("OCR_BEAM_WIDTH", "5")) or 5)
-OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE", "1")) or 1)
-OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
-
-# Role tier names (fixed, only 3 roles)
 TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 
 # ============================================================
@@ -929,3 +871,4 @@ if __name__ == "__main__":
     else:
         client.run(DISCORD_TOKEN)
 ```
+
