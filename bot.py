@@ -252,8 +252,6 @@ def extract_wallchain_score(results):
                 [min(quack_bbox[3][0], balance_bbox[3][0]), max(quack_bbox[3][1], balance_bbox[3][1])],
             ]
 
-    # Wallchain target metric: Quack Balance.
-    # Prefer numeric value near the "Quack Balance" label before any score gauge fallback.
     if quack_balance_bbox:
         label_left_x = min(p[0] for p in quack_balance_bbox)
         label_right_x = max(p[0] for p in quack_balance_bbox)
@@ -290,8 +288,6 @@ def extract_wallchain_score(results):
         if balance_candidates:
             return balance_candidates[0][3]
 
-    # Wallchain usually renders score right above "Top xx%".
-    # Anchor on that label first because dial ticks (0/50/100/200/...) are frequent OCR false picks.
     if top_bbox:
         top_center_x = (top_bbox[0][0] + top_bbox[1][0]) / 2
         top_top_y = min(top_bbox[0][1], top_bbox[1][1])
@@ -400,14 +396,12 @@ def extract_kaito_score(results):
 def extract_xeet_score(results):
     label_bbox = None
 
-    # Require an explicit Xeets earned confirmation to avoid false positives.
     for (bbox, text, prob) in results:
         t = text.lower().strip()
         if "xeets earned" in t or ("xeet" in t and "earned" in t):
             label_bbox = bbox
             break
 
-    # OCR may split label into two tokens ("Xeets" and "earned").
     if not label_bbox:
         xeet_bbox = None
         earned_bbox = None
@@ -466,7 +460,6 @@ def extract_cookie_score(results):
         if earned_bbox is None and "earned" in t:
             earned_bbox = bbox
 
-    # OCR can split "Total snaps earned" into separate tokens.
     if label_bbox is None and total_bbox and snaps_bbox and earned_bbox:
         y_total = (total_bbox[0][1] + total_bbox[2][1]) / 2
         y_snaps = (snaps_bbox[0][1] + snaps_bbox[2][1]) / 2
@@ -520,7 +513,6 @@ def extract_handle(results):
     for (bbox, text, prob) in results:
         t = text.strip()
         if t.startswith('@') and len(t) > 3:
-            # trim punctuation that OCR sometimes adds
             return t.lstrip('@').strip().strip('.,;:!)]}(')
     return None
 
@@ -571,7 +563,6 @@ class VerificationResult:
                         self.role_name = "Top Signal"
 
                 else:
-                    # Unknown project: do not assign tier role
                     self.role_name = None
             except ValueError:
                 self.role_name = None
@@ -581,7 +572,6 @@ class VerificationResult:
 # ============================================================
 intents = discord.Intents.default()
 intents.guilds = True
-# We intentionally avoid message_content: we do NOT use public chat commands anymore.
 intents.message_content = False
 
 client = discord.Client(intents=intents)
@@ -609,14 +599,49 @@ def slash_cmd_mention(name: str) -> str:
 
     return f"`/{name}`"
 
+class XLinkLayout(discord.ui.LayoutView):
+    def __init__(self, link: str, verify_mention: str):
+        super().__init__(timeout=LINK_TTL)
+
+        container = discord.ui.Container(accent_color=0x1DA1F2)
+
+        container.add_item(
+            discord.ui.TextDisplay("**🔗 Link Your X Account**")
+        )
+
+        container.add_item(
+            discord.ui.TextDisplay(
+                "To use verification, you must link your X account.\n\n"
+                "Click **Connect X Account** below. After you see ✅ **Success** in your browser, "
+                f"come back here and click {verify_mention} to auto-open the verification command."
+            )
+        )
+
+        row = discord.ui.ActionRow()
+        row.add_item(
+            discord.ui.Button(
+                label="Connect X Account",
+                style=discord.ButtonStyle.link,
+                url=link,
+                emoji="🔵",
+            )
+        )
+        container.add_item(row)
+
+        container.add_item(
+            discord.ui.TextDisplay("⏱️ Link expires in 10 minutes")
+        )
+
+        self.add_item(container)
+
+def build_link_layout(link: str) -> discord.ui.LayoutView:
+    verify_mention = slash_cmd_mention("verify")
+    return XLinkLayout(link, verify_mention)
+
 def _require_verify_channel(interaction: discord.Interaction) -> bool:
     return (VERIFY_CHANNEL_ID == 0) or (interaction.channel_id == VERIFY_CHANNEL_ID)
 
 async def ensure_tier_roles(guild: discord.Guild) -> dict:
-    """
-    Ensure the 3 tier roles exist. Returns name->Role for roles that exist/created.
-    If bot lacks permissions, some entries may be missing (None).
-    """
     roles = {}
     for name in TIER_ROLE_NAMES:
         role = discord.utils.get(guild.roles, name=name)
@@ -629,10 +654,6 @@ async def ensure_tier_roles(guild: discord.Guild) -> dict:
     return roles
 
 async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool, str]:
-    """
-    Removes other tier roles and assigns role_name.
-    Returns (ok, message).
-    """
     if role_name not in TIER_ROLE_NAMES:
         return False, "Invalid tier role name."
 
@@ -646,7 +667,6 @@ async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool
             "Please grant **Manage Roles** and place my bot role above the tier roles."
         )
 
-    # Remove other tier roles (if present)
     to_remove = []
     for n in TIER_ROLE_NAMES:
         if n == role_name:
@@ -667,27 +687,6 @@ async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool
         )
 
     return True, "Role assigned."
-
-def build_link_embed(link: str) -> tuple[discord.Embed, discord.ui.View]:
-    embed = discord.Embed(
-        title="🔗 Link Your X Account",
-        description=(
-            "To use verification, you must link your X account.\n\n"
-            "Click **Connect X Account** below. After you see ✅ Success in your browser, "
-            "come back here and use the verification command mention shown in the message."
-        ),
-        color=0x1DA1F2
-    )
-    embed.set_footer(text="⏱️ Link expires in 10 minutes")
-
-    view = discord.ui.View()
-    view.add_item(discord.ui.Button(
-        label="Connect X Account",
-        style=discord.ButtonStyle.link,
-        url=link,
-        emoji="🔵"
-    ))
-    return embed, view
 
 def build_result_embed(member: discord.Member, x_link: dict | None, result: VerificationResult) -> discord.Embed:
     if result.handle_match_error:
@@ -744,17 +743,11 @@ async def xlink_cmd(interaction: discord.Interaction):
 
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     link = await create_signed_start_link(str(interaction.user.id))
-    embed, view = build_link_embed(link)
-    verify_mention = slash_cmd_mention("verify")
+    layout = build_link_layout(link)
 
     await interaction.response.send_message(
-        content=(
-            "After you finish linking in the browser, click "
-            f"{verify_mention} to auto-open the verification command."
-        ),
-        embed=embed,
-        view=view,
-        ephemeral=True
+        view=layout,
+        ephemeral=True,
     )
 
 @tree.command(name="xstatus", description="Show your linked X account status")
@@ -783,7 +776,6 @@ async def xunlink_cmd(interaction: discord.Interaction):
 @tree.command(name="verify", description="Upload a screenshot for verification (ephemeral)")
 @discord.app_commands.describe(image="Upload a screenshot (PNG/JPG)")
 async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment):
-    # Must be used in a guild
     if not interaction.guild or not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
@@ -801,31 +793,22 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
 
-    # Gate: must be linked
     x_link = await link_get(str(interaction.user.id))
     if not x_link:
         link = await create_signed_start_link(str(interaction.user.id))
-        embed, view = build_link_embed(link)
-        verify_mention = slash_cmd_mention("verify")
+        layout = build_link_layout(link)
 
         await interaction.response.send_message(
-            content=(
-                "First link your X account below. After that, click "
-                f"{verify_mention} to auto-open the verification command."
-            ),
-            embed=embed,
-            view=view,
-            ephemeral=True
+            view=layout,
+            ephemeral=True,
         )
         return
 
-    # Immediately acknowledge (ephemeral)
     await interaction.response.defer(ephemeral=True, thinking=True)
 
     try:
         image_bytes = await image.read()
 
-        # Concurrency limiter: avoid melting CPU under load.
         async with OCR_SEMAPHORE:
             loop = asyncio.get_event_loop()
             ocr_started = time.perf_counter()
@@ -834,7 +817,6 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 
         project = classify_project(results)
 
-        # Extract score
         score_val = None
         if project == "Wallchain":
             score_val = extract_wallchain_score(results)
@@ -847,14 +829,12 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
         elif project == "Mindoshare":
             score_val = extract_mindoshare_score(results)
         else:
-            # Fallback sequence
             score_val = (
                 extract_mindoshare_score(results)
                 or extract_wallchain_score(results)
                 or extract_kaito_score(results)
             )
 
-        # Handle / identity check
         handle_error = None
         img_handle = extract_handle(results)
         required_handle = (x_link.get("x_username") or "").lower()
@@ -863,14 +843,12 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 
         result = VerificationResult(score_val, project, handle_match_error=handle_error)
 
-        # Assign role if applicable and no identity mismatch
         role_note = None
         if result.role_name and not result.handle_match_error:
             ok, msg = await assign_tier_role(interaction.user, result.role_name)
             if not ok:
                 role_note = msg
 
-        # Log to DB (always log attempt)
         await database.log_result(
             discord_id=str(interaction.user.id),
             discord_username=str(interaction.user),
@@ -927,4 +905,3 @@ if __name__ == "__main__":
         print("Error: X_CLIENT_ID / X_REDIRECT_URI missing. Add them to config/env.")
     else:
         client.run(DISCORD_TOKEN)
-
