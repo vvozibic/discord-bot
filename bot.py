@@ -55,7 +55,7 @@ OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE
 OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
 
 # Role tier names (fixed, only 3 roles)
-TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
+TIER_ROLE_NAMES = ["Signal Lite", "Signal Booster", "Top Signal"]
 
 # ============================================================
 # OCR Setup
