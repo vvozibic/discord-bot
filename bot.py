@@ -534,7 +534,7 @@ class VerificationResult:
                     if 50 < val < 200:
                         self.role_name = "Signal Lite"
                     elif 200 <= val < 1000:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = "Signal Booster"
                     elif val >= 1000:
                         self.role_name = "Top Signal"
 
@@ -542,7 +542,7 @@ class VerificationResult:
                     if 10 < val <= 75:
                         self.role_name = "Signal Lite"
                     elif 76 <= val <= 400:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = "Signal Booster"
                     elif val >= 401:
                         self.role_name = "Top Signal"
 
@@ -550,7 +550,7 @@ class VerificationResult:
                     if 10 <= val <= 200:
                         self.role_name = "Signal Lite"
                     elif 201 <= val <= 400:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = "Signal Booster"
                     elif val >= 401:
                         self.role_name = "Top Signal"
 
@@ -558,7 +558,7 @@ class VerificationResult:
                     if 100 <= val <= 300:
                         self.role_name = "Signal Lite"
                     elif 301 <= val < 1100:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = "Signal Booster"
                     elif val >= 1100:
                         self.role_name = "Top Signal"
 
