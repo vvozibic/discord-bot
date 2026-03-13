@@ -605,18 +605,19 @@ class XLinkLayout(discord.ui.LayoutView):
 
         container = discord.ui.Container(accent_color=0x1DA1F2)
 
+        # Title
         container.add_item(
             discord.ui.TextDisplay("**🔗 Link Your X Account**")
         )
 
+        # Intro text
         container.add_item(
             discord.ui.TextDisplay(
-                "To use verification, you must link your X account.\n\n"
-                "Click **Connect X Account** below. After you see ✅ **Success** in your browser, "
-                f"come back here and click {verify_mention} to auto-open the verification command."
+                "To use verification, you must link your X account."
             )
         )
 
+        # Button higher
         row = discord.ui.ActionRow()
         row.add_item(
             discord.ui.Button(
@@ -628,6 +629,15 @@ class XLinkLayout(discord.ui.LayoutView):
         )
         container.add_item(row)
 
+        # Verify mention below button
+        container.add_item(
+            discord.ui.TextDisplay(
+                "After you see ✅ **Success** in your browser, come back here "
+                f"and click {verify_mention} to auto-open the verification command."
+            )
+        )
+
+        # Footer
         container.add_item(
             discord.ui.TextDisplay("⏱️ Link expires in 10 minutes")
         )
