@@ -1,4 +1,3 @@
-```python
 import discord
 import asyncio
 import re
@@ -928,4 +927,4 @@ if __name__ == "__main__":
         print("Error: X_CLIENT_ID / X_REDIRECT_URI missing. Add them to config/env.")
     else:
         client.run(DISCORD_TOKEN)
-```
+
