@@ -645,7 +645,7 @@ class XLinkLayout(discord.ui.LayoutView):
         self.add_item(container)
 
 class SuperCampaignLayout(discord.ui.LayoutView):
-    def __init__(self, link: str, xlink_mention: str, verify_mention: str):
+    def __init__(self, link: str, verify_mention: str):
         super().__init__(timeout=LINK_TTL)
 
         container = discord.ui.Container(accent_color=0x1DA1F2)
@@ -658,13 +658,7 @@ class SuperCampaignLayout(discord.ui.LayoutView):
 
         container.add_item(
             discord.ui.TextDisplay(
-                f"**1.** Click {xlink_mention}"
-            )
-        )
-
-        container.add_item(
-            discord.ui.TextDisplay(
-                "**2.** Click on **Connect X Account** button"
+                "**1.** Click on **Connect X Account** button"
             )
         )
 
@@ -681,14 +675,14 @@ class SuperCampaignLayout(discord.ui.LayoutView):
 
         container.add_item(
             discord.ui.TextDisplay(
-                f"**3.** After that click {verify_mention} and attach image with your previous score "
+                f"**2.** After that click {verify_mention} and attach image with your previous score "
                 "from **Kaito, Wallchain, Cookie, Xeet**"
             )
         )
 
         container.add_item(
             discord.ui.TextDisplay(
-                "**4.** Obtain one of 3 roles based on your previous KOL achievements\n\n"
+                "**3.** Obtain one of 3 roles based on your previous KOL achievements\n\n"
                 f"{SMALLER_IMPACT_ROLE_MENTION} - for smaller impact on X space\n"
                 f"{MID_IMPACT_ROLE_TEXT} - for mid impact\n"
                 f"{TOP_IMPACT_ROLE_MENTION} - for the top impact"
@@ -771,9 +765,8 @@ def build_link_layout(link: str) -> discord.ui.LayoutView:
     return XLinkLayout(link, verify_mention)
 
 def build_super_layout(link: str) -> discord.ui.LayoutView:
-    xlink_mention = slash_cmd_mention("xlink")
     verify_mention = slash_cmd_mention("verify")
-    return SuperCampaignLayout(link, xlink_mention, verify_mention)
+    return SuperCampaignLayout(link, verify_mention)
 
 def build_result_layout(
     member: discord.Member,
