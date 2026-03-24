@@ -33,7 +33,6 @@ LINK_TTL = 10 * 60  # 10 minutes
 
 # ---- Discord ----
 DISCORD_TOKEN = getattr(config, "DISCORD_TOKEN", os.getenv("DISCORD_TOKEN", "")).strip()
-# For instant slash commands in a test server, set DISCORD_GUILD_ID (recommended).
 DISCORD_GUILD_ID = int(getattr(config, "DISCORD_GUILD_ID", os.getenv("DISCORD_GUILD_ID", "0")) or 0)
 
 # Optional: restrict /verify to one channel (0 = allow everywhere)
@@ -55,17 +54,19 @@ OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE
 OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
 
 # Role tier names (fixed, only 3 roles)
-TIER_ROLE_NAMES = ["Signal Lite", "Signal Booster", "Top Signal"]
+TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
+
+# Role mentions for /super text
+SMALLER_IMPACT_ROLE_MENTION = "<@&1469347228777713918>"
+TOP_IMPACT_ROLE_MENTION = "<@&1473697234494292021>"
+MID_IMPACT_ROLE_TEXT = "@Signal Booster"
 
 # ============================================================
 # OCR Setup
 # ============================================================
-# Note: EasyOCR uses PyTorch under the hood.
-# Keep reader global so models are loaded once.
 reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available(), verbose=False)
 
 def run_ocr(image_bytes: bytes):
-    # Faster defaults for CPU servers while keeping extraction-compatible output.
     return reader.readtext(
         image_bytes,
         decoder="greedy",
@@ -163,13 +164,12 @@ async def create_signed_start_link(discord_id: str) -> str:
     msg = f"{discord_id}:{ts}".encode("utf-8")
     sig = hmac.new(LINK_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
-    # Base URL = X_REDIRECT_URI minus /x/callback
     base_url = X_REDIRECT_URI.replace("/x/callback", "")
     params = {"discord_id": discord_id, "ts": ts, "sig": sig}
     return f"{base_url}/x/start?" + urllib.parse.urlencode(params)
 
 # ============================================================
-# OCR logic (your existing rules)
+# OCR logic
 # ============================================================
 def classify_project(results):
     text_blob = " ".join([t[1].lower() for t in results])
@@ -534,7 +534,7 @@ class VerificationResult:
                     if 50 < val < 200:
                         self.role_name = "Signal Lite"
                     elif 200 <= val < 1000:
-                        self.role_name = "Signal Booster"
+                        self.role_name = "Signal Amplifier"
                     elif val >= 1000:
                         self.role_name = "Top Signal"
 
@@ -542,7 +542,7 @@ class VerificationResult:
                     if 10 < val <= 75:
                         self.role_name = "Signal Lite"
                     elif 76 <= val <= 400:
-                        self.role_name = "Signal Booster"
+                        self.role_name = "Signal Amplifier"
                     elif val >= 401:
                         self.role_name = "Top Signal"
 
@@ -550,7 +550,7 @@ class VerificationResult:
                     if 10 <= val <= 200:
                         self.role_name = "Signal Lite"
                     elif 201 <= val <= 400:
-                        self.role_name = "Signal Booster"
+                        self.role_name = "Signal Amplifier"
                     elif val >= 401:
                         self.role_name = "Top Signal"
 
@@ -558,7 +558,7 @@ class VerificationResult:
                     if 100 <= val <= 300:
                         self.role_name = "Signal Lite"
                     elif 301 <= val < 1100:
-                        self.role_name = "Signal Booster"
+                        self.role_name = "Signal Amplifier"
                     elif val >= 1100:
                         self.role_name = "Top Signal"
 
@@ -568,7 +568,7 @@ class VerificationResult:
                 self.role_name = None
 
 # ============================================================
-# Discord bot (Slash commands + ephemeral replies)
+# Discord bot (Slash commands + V2 replies)
 # ============================================================
 intents = discord.Intents.default()
 intents.guilds = True
@@ -577,14 +577,9 @@ intents.message_content = False
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
-# name -> synced app command object
 SYNCED_COMMANDS = {}
 
 def slash_cmd_mention(name: str) -> str:
-    """
-    Return a clickable slash-command mention like </verify:123...>.
-    Falls back to plain `/name` if the command has not been synced yet.
-    """
     cmd = SYNCED_COMMANDS.get(name)
     if not cmd:
         return f"`/{name}`"
@@ -599,25 +594,32 @@ def slash_cmd_mention(name: str) -> str:
 
     return f"`/{name}`"
 
+def _require_verify_channel(interaction: discord.Interaction) -> bool:
+    return (VERIFY_CHANNEL_ID == 0) or (interaction.channel_id == VERIFY_CHANNEL_ID)
+
+def _result_color(result: VerificationResult) -> int:
+    if result.handle_match_error:
+        return 0xED4245
+    if result.detected_score:
+        return 0x57F287
+    return 0xED4245
+
 class XLinkLayout(discord.ui.LayoutView):
     def __init__(self, link: str, verify_mention: str):
         super().__init__(timeout=LINK_TTL)
 
         container = discord.ui.Container(accent_color=0x1DA1F2)
 
-        # Title
         container.add_item(
             discord.ui.TextDisplay("**🔗 Link Your X Account**")
         )
 
-        # Intro text
         container.add_item(
             discord.ui.TextDisplay(
                 "To use verification, you must link your X account."
             )
         )
 
-        # Button higher
         row = discord.ui.ActionRow()
         row.add_item(
             discord.ui.Button(
@@ -629,7 +631,6 @@ class XLinkLayout(discord.ui.LayoutView):
         )
         container.add_item(row)
 
-        # Verify mention below button
         container.add_item(
             discord.ui.TextDisplay(
                 "After you see ✅ **Success** in your browser, come back here "
@@ -637,9 +638,130 @@ class XLinkLayout(discord.ui.LayoutView):
             )
         )
 
-        # Footer
         container.add_item(
             discord.ui.TextDisplay("⏱️ Link expires in 10 minutes")
+        )
+
+        self.add_item(container)
+
+class SuperCampaignLayout(discord.ui.LayoutView):
+    def __init__(self, link: str, xlink_mention: str, verify_mention: str):
+        super().__init__(timeout=LINK_TTL)
+
+        container = discord.ui.Container(accent_color=0x1DA1F2)
+
+        container.add_item(
+            discord.ui.TextDisplay(
+                "# <:004:1420713409346928650>  Gmindo, to obtain all benefits from our new campaign follow this steps!"
+            )
+        )
+
+        container.add_item(
+            discord.ui.TextDisplay(
+                f"**1.** Click {xlink_mention}"
+            )
+        )
+
+        container.add_item(
+            discord.ui.TextDisplay(
+                "**2.** Click on **Connect X Account** button"
+            )
+        )
+
+        row = discord.ui.ActionRow()
+        row.add_item(
+            discord.ui.Button(
+                label="Connect X Account",
+                style=discord.ButtonStyle.link,
+                url=link,
+                emoji="🔵",
+            )
+        )
+        container.add_item(row)
+
+        container.add_item(
+            discord.ui.TextDisplay(
+                f"**3.** After that click {verify_mention} and attach image with your previous score "
+                "from **Kaito, Wallchain, Cookie, Xeet**"
+            )
+        )
+
+        container.add_item(
+            discord.ui.TextDisplay(
+                "**4.** Obtain one of 3 roles based on your previous KOL achievements\n\n"
+                f"{SMALLER_IMPACT_ROLE_MENTION} - for smaller impact on X space\n"
+                f"{MID_IMPACT_ROLE_TEXT} - for mid impact\n"
+                f"{TOP_IMPACT_ROLE_MENTION} - for the top impact"
+            )
+        )
+
+        self.add_item(container)
+
+class VerificationResultLayout(discord.ui.LayoutView):
+    def __init__(
+        self,
+        member: discord.Member,
+        x_link: dict | None,
+        result: VerificationResult,
+        role_note: str | None = None
+    ):
+        super().__init__(timeout=LINK_TTL)
+
+        container = discord.ui.Container(accent_color=_result_color(result))
+
+        if result.handle_match_error:
+            status_text = (
+                f"❌ **Identity Mismatch**\n"
+                f"{result.handle_match_error}\n"
+                f"This screenshot does not belong to your linked account."
+            )
+        elif result.detected_score:
+            status_text = f"✅ **Verification Successful**\nFound **{result.project}** score!"
+        else:
+            status_text = (
+                f"❌ **Verification Failed**\n"
+                f"Could not detect a **{result.project}** score.\n"
+                f"Please ensure the image is clear and uncropped."
+            )
+
+        container.add_item(
+            discord.ui.TextDisplay(f"**{member.display_name}**")
+        )
+
+        container.add_item(
+            discord.ui.TextDisplay(status_text)
+        )
+
+        details = []
+        if result.detected_score:
+            details.append(f"**🎯 Score**\n`{result.detected_score}`")
+        if result.role_name:
+            details.append(f"**🎭 Role**\n`{result.role_name}`")
+
+        if x_link:
+            x_user = x_link.get("x_username")
+            x_handle = f"[@{x_user}](https://x.com/{x_user})"
+            is_verified = bool(x_link.get("verified")) or (
+                str(x_link.get("verified_type") or "").lower() in {"blue", "business", "government"}
+            )
+            if is_verified:
+                x_handle += " ☑️"
+            details.append(f"**🔗 X Account**\n{x_handle}")
+        else:
+            details.append("**🔗 X Account**\n*Not Linked*")
+
+        if details:
+            container.add_item(
+                discord.ui.TextDisplay("\n\n".join(details))
+            )
+
+        if role_note:
+            container.add_item(
+                discord.ui.TextDisplay(f"**⚠️ Role assignment**\n{role_note}")
+            )
+
+        container.add_item(
+            discord.ui.TextDisplay("Mindo AI Verifier")
         )
 
         self.add_item(container)
@@ -648,8 +770,18 @@ def build_link_layout(link: str) -> discord.ui.LayoutView:
     verify_mention = slash_cmd_mention("verify")
     return XLinkLayout(link, verify_mention)
 
-def _require_verify_channel(interaction: discord.Interaction) -> bool:
-    return (VERIFY_CHANNEL_ID == 0) or (interaction.channel_id == VERIFY_CHANNEL_ID)
+def build_super_layout(link: str) -> discord.ui.LayoutView:
+    xlink_mention = slash_cmd_mention("xlink")
+    verify_mention = slash_cmd_mention("verify")
+    return SuperCampaignLayout(link, xlink_mention, verify_mention)
+
+def build_result_layout(
+    member: discord.Member,
+    x_link: dict | None,
+    result: VerificationResult,
+    role_note: str | None = None
+) -> discord.ui.LayoutView:
+    return VerificationResultLayout(member, x_link, result, role_note)
 
 async def ensure_tier_roles(guild: discord.Guild) -> dict:
     roles = {}
@@ -698,53 +830,8 @@ async def assign_tier_role(member: discord.Member, role_name: str) -> tuple[bool
 
     return True, "Role assigned."
 
-def build_result_embed(member: discord.Member, x_link: dict | None, result: VerificationResult) -> discord.Embed:
-    if result.handle_match_error:
-        desc = (
-            f"❌ **Identity Mismatch**\n"
-            f"{result.handle_match_error}\n"
-            f"This screenshot does not belong to your linked account."
-        )
-        color = 0xED4245
-    elif result.detected_score:
-        desc = f"✅ **Verification Successful**\nFound **{result.project}** score!"
-        color = 0x57F287
-    else:
-        desc = (
-            f"❌ **Verification Failed**\n"
-            f"Could not detect a **{result.project}** score.\n"
-            f"Please ensure the image is clear and uncropped."
-        )
-        color = 0xED4245
-
-    embed = discord.Embed(description=desc, color=color)
-    embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
-
-    if result.detected_score:
-        embed.add_field(name="🎯 Score", value=f"`{result.detected_score}`", inline=True)
-    if result.role_name:
-        embed.add_field(name="🎭 Role", value=f"`{result.role_name}`", inline=True)
-
-    if x_link:
-        x_user = x_link.get("x_username")
-        x_handle = f"[@{x_user}](https://x.com/{x_user})"
-        is_verified = bool(x_link.get("verified")) or (
-            str(x_link.get("verified_type") or "").lower() in {"blue", "business", "government"}
-        )
-        if is_verified:
-            x_handle += " ☑️"
-        embed.add_field(name="🔗 X Account", value=x_handle, inline=False)
-    else:
-        embed.add_field(name="🔗 X Account", value="*Not Linked*", inline=False)
-
-    embed.set_footer(
-        text="Mindo AI Verifier",
-        icon_url=client.user.display_avatar.url if client.user else None
-    )
-    return embed
-
 # -----------------------------
-# Slash commands (all ephemeral)
+# Slash commands
 # -----------------------------
 @tree.command(name="xlink", description="Link your X account for verification")
 async def xlink_cmd(interaction: discord.Interaction):
@@ -754,6 +841,20 @@ async def xlink_cmd(interaction: discord.Interaction):
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     link = await create_signed_start_link(str(interaction.user.id))
     layout = build_link_layout(link)
+
+    await interaction.response.send_message(
+        view=layout,
+        ephemeral=True,
+    )
+
+@tree.command(name="super", description="Show campaign onboarding steps")
+async def super_cmd(interaction: discord.Interaction):
+    if not interaction.user:
+        return
+
+    await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
+    link = await create_signed_start_link(str(interaction.user.id))
+    layout = build_super_layout(link)
 
     await interaction.response.send_message(
         view=layout,
@@ -868,11 +969,12 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
             role_assigned=result.role_name
         )
 
-        embed = build_result_embed(interaction.user, x_link, result)
-        if role_note:
-            embed.add_field(name="⚠️ Role assignment", value=role_note, inline=False)
+        result_layout = build_result_layout(interaction.user, x_link, result, role_note)
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(
+            view=result_layout,
+            ephemeral=True
+        )
 
     except Exception as e:
         await interaction.followup.send(f"❌ Verification failed: {e}", ephemeral=True)
