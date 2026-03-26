@@ -16,7 +16,12 @@ import base64
 import aiohttp
 import hmac
 import database
-from profile_card import build_linked_profile_layout
+from discord.ui.media_gallery import MediaGalleryItem
+from profile_card import (
+    CARD_ATTACHMENT_NAME,
+    build_linked_profile_layout,
+    ensure_profile_card,
+)
 
 # ============================================================
 # Config
@@ -698,7 +703,8 @@ class VerificationResultLayout(discord.ui.LayoutView):
         member: discord.Member,
         x_link: dict | None,
         result: VerificationResult,
-        role_note: str | None = None
+        role_note: str | None = None,
+        profile_card_url: str | None = None,
     ):
         super().__init__(timeout=LINK_TTL)
 
@@ -722,6 +728,16 @@ class VerificationResultLayout(discord.ui.LayoutView):
         container.add_item(
             discord.ui.TextDisplay(f"**{member.display_name}**")
         )
+
+        if profile_card_url:
+            container.add_item(
+                discord.ui.MediaGallery(
+                    MediaGalleryItem(
+                        profile_card_url,
+                        description="Linked X profile card",
+                    )
+                )
+            )
 
         container.add_item(
             discord.ui.TextDisplay(status_text)
@@ -774,9 +790,10 @@ def build_result_layout(
     member: discord.Member,
     x_link: dict | None,
     result: VerificationResult,
-    role_note: str | None = None
+    role_note: str | None = None,
+    profile_card_url: str | None = None,
 ) -> discord.ui.LayoutView:
-    return VerificationResultLayout(member, x_link, result, role_note)
+    return VerificationResultLayout(member, x_link, result, role_note, profile_card_url)
 
 async def ensure_tier_roles(guild: discord.Guild) -> dict:
     roles = {}
@@ -972,12 +989,34 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
             role_assigned=result.role_name
         )
 
-        result_layout = build_result_layout(interaction.user, x_link, result, role_note)
-
-        await interaction.followup.send(
-            view=result_layout,
-            ephemeral=True
+        x_username = (x_link.get("x_username") or "").strip()
+        x_display_name = (x_link.get("x_name") or x_username or interaction.user.display_name).strip()
+        profile_card_path = ensure_profile_card(
+            str(interaction.user.id),
+            x_display_name,
+            x_username or interaction.user.display_name,
+            verified=bool(x_link.get("verified")),
+            verified_type=x_link.get("verified_type"),
         )
+
+        profile_card_url = None
+        followup_kwargs = {
+            "ephemeral": True,
+        }
+        if profile_card_path and os.path.exists(profile_card_path):
+            profile_card_url = f"attachment://{CARD_ATTACHMENT_NAME}"
+            followup_kwargs["file"] = discord.File(profile_card_path, filename=CARD_ATTACHMENT_NAME)
+
+        result_layout = build_result_layout(
+            interaction.user,
+            x_link,
+            result,
+            role_note,
+            profile_card_url,
+        )
+        followup_kwargs["view"] = result_layout
+
+        await interaction.followup.send(**followup_kwargs)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Verification failed: {e}", ephemeral=True)
