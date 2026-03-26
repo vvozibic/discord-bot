@@ -1,9 +1,11 @@
 import os, time, json, hmac, hashlib, base64, secrets, urllib.parse, tempfile
 import aiohttp
+import discord
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from dotenv import load_dotenv
 import database
+from profile_card import build_linked_profile_layout
 
 load_dotenv()
 
@@ -12,9 +14,11 @@ X_CLIENT_ID = os.environ["X_CLIENT_ID"]
 X_CLIENT_SECRET = os.environ.get("X_CLIENT_SECRET", "")  # optional for public client
 X_REDIRECT_URI = os.environ["X_REDIRECT_URI"]            # e.g. https://your-service.com/x/callback
 X_SCOPES = os.environ.get("X_SCOPES", "users.read tweet.read")
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 
 LINK_SECRET = os.environ["LINK_SECRET"]  # shared with bot (HMAC)
 LINK_TTL = 10 * 60                       # seconds validity of signed link
+DISCORD_API_BASE = "https://discord.com/api/v10"
 
 PENDING_FILE = "oauth_pending.json"
 LINKS_FILE = "x_links.json"
@@ -58,7 +62,7 @@ def _pkce_challenge(verifier: str) -> str:
 # ---- Signed link verification (prevents hijack) ----
 def _check_sig(discord_id: str, ts: int, sig: str):
     if abs(int(time.time()) - ts) > LINK_TTL:
-        raise HTTPException(400, "link expired, run !xlink again")
+        raise HTTPException(400, "link expired, generate a fresh connect link in Discord and try again")
 
     msg = f"{discord_id}:{ts}".encode("utf-8")
     expected = hmac.new(LINK_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
@@ -91,7 +95,7 @@ async def _token_exchange(code: str, verifier: str) -> dict:
 
 async def _users_me(access_token: str) -> dict:
     url = "https://api.x.com/2/users/me"
-    params = {"user.fields": "id,username,name,verified,verified_type"}
+    params = {"user.fields": "id,username,name,profile_image_url,verified,verified_type"}
     headers = {"Authorization": f"Bearer {access_token}"}
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
@@ -100,6 +104,60 @@ async def _users_me(access_token: str) -> dict:
             if r.status != 200:
                 raise HTTPException(r.status, f"/2/users/me failed: {txt[:300]}")
             return json.loads(txt)
+
+
+async def _discord_api_request(method: str, path: str, payload: dict | None = None) -> dict | None:
+    headers = {"Authorization": f"Bot {DISCORD_TOKEN}"}
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+        async with session.request(
+            method,
+            f"{DISCORD_API_BASE}{path}",
+            headers=headers,
+            json=payload,
+        ) as response:
+            text = await response.text()
+            if response.status >= 400:
+                raise RuntimeError(f"Discord API {response.status}: {text[:300]}")
+            if not text:
+                return None
+            return json.loads(text)
+
+
+async def _send_linked_profile_card(discord_id: str, user: dict, verified: bool) -> None:
+    if not DISCORD_TOKEN:
+        return
+
+    username = (user.get("username") or "").strip()
+    if not username:
+        return
+
+    display_name = (user.get("name") or username).strip()
+    profile_image_url = (user.get("profile_image_url") or "").strip() or None
+    view = build_linked_profile_layout(
+        display_name,
+        username,
+        profile_image_url,
+        verified=verified,
+        verified_type=user.get("verified_type"),
+        footer_text="Return to the server and use `/verify` with your score screenshot.",
+    )
+
+    channel = await _discord_api_request(
+        "POST",
+        "/users/@me/channels",
+        {"recipient_id": str(discord_id)},
+    )
+    if not channel:
+        return
+
+    payload = {
+        "flags": discord.MessageFlags(components_v2=True).value,
+        "components": view.to_components(),
+    }
+    await _discord_api_request("POST", f"/channels/{channel['id']}/messages", payload)
 
 # ---- Routes ----
 @app.get("/x/start")
@@ -153,7 +211,10 @@ async def x_callback(
     _atomic_write(PENDING_FILE, pending)
 
     if not st:
-        return HTMLResponse("<h3>Invalid/expired state</h3><p>Run !xlink again.</p>", status_code=400)
+        return HTMLResponse(
+            "<h3>Invalid or expired state</h3><p>Generate a fresh connect link in Discord and try again.</p>",
+            status_code=400,
+        )
 
     token = await _token_exchange(code, st["code_verifier"])
     me = await _users_me(token["access_token"])
@@ -173,6 +234,10 @@ async def x_callback(
         "linked_at": int(time.time()),
     }
     await database.save_link(st["discord_id"], link_payload)
+    try:
+        await _send_linked_profile_card(st["discord_id"], user, verified)
+    except Exception as exc:
+        print(f"Failed to send linked profile card: {exc}")
 
     return HTMLResponse(get_success_html(user.get("username")), status_code=200)
 
@@ -290,7 +355,7 @@ def get_success_html(username):
             </div>
             <h1>Success!</h1>
             <p>Your X account <span class="username">@{username}</span><br>has been successfully linked.</p>
-            <p style="margin-top: 1rem; font-size: 0.85rem; opacity: 0.7;">You can now close this window and return to Discord.</p>
+            <p style="margin-top: 1rem; font-size: 0.85rem; opacity: 0.7;">We sent your profile card to Discord. You can now close this window and return to the server.</p>
         </div>
     </body>
     </html>

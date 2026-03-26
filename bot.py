@@ -16,6 +16,7 @@ import base64
 import aiohttp
 import hmac
 import database
+from profile_card import build_linked_profile_layout
 
 # ============================================================
 # Config
@@ -734,13 +735,14 @@ class VerificationResultLayout(discord.ui.LayoutView):
 
         if x_link:
             x_user = x_link.get("x_username")
+            x_name = (x_link.get("x_name") or x_user or "").strip()
             x_handle = f"[@{x_user}](https://x.com/{x_user})"
             is_verified = bool(x_link.get("verified")) or (
                 str(x_link.get("verified_type") or "").lower() in {"blue", "business", "government"}
             )
             if is_verified:
                 x_handle += " ☑️"
-            details.append(f"**🔗 X Account**\n{x_handle}")
+            details.append(f"**🔗 X Account**\n{x_name}\n{x_handle}")
         else:
             details.append("**🔗 X Account**\n*Not Linked*")
 
@@ -859,17 +861,25 @@ async def xstatus_cmd(interaction: discord.Interaction):
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     obj = await link_get(str(interaction.user.id))
     if not obj:
-        await interaction.response.send_message("You have not linked X yet. Use `/xlink`.", ephemeral=True)
+        await interaction.response.send_message(
+            "You have not linked X yet. Use `/super` and press **Connect X Account**.",
+            ephemeral=True,
+        )
         return
 
     verify_mention = slash_cmd_mention("verify")
-
-    await interaction.response.send_message(
-        f"✅ Linked X: @{obj.get('x_username')}\n"
-        f"Verified: {obj.get('verified')} | Type: {obj.get('verified_type')}\n\n"
-        f"Now click {verify_mention} to start verification.",
-        ephemeral=True
+    username = (obj.get("x_username") or "").strip()
+    display_name = (obj.get("x_name") or username or "X user").strip()
+    layout = build_linked_profile_layout(
+        display_name,
+        username,
+        None,
+        verified=bool(obj.get("verified")),
+        verified_type=obj.get("verified_type"),
+        footer_text=f"Use {verify_mention} in the server to continue verification.",
     )
+
+    await interaction.response.send_message(view=layout, ephemeral=True)
 
 @tree.command(name="xunlink", description="Unlink your X account")
 async def xunlink_cmd(interaction: discord.Interaction):
