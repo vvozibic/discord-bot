@@ -395,10 +395,20 @@ def save_profile_avatar(
     content_type: str | None = None,
 ) -> str | None:
     _ensure_cache_dirs()
-    remove_profile_assets(discord_id)
 
     if not avatar_bytes:
-        return None
+        return get_profile_avatar_path(discord_id)
+
+    try:
+        _card_path(discord_id).unlink()
+    except FileNotFoundError:
+        pass
+
+    for path in _avatar_glob(discord_id):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
     avatar_path = _AVATAR_DIR / f"{_sanitize_discord_id(discord_id)}{_avatar_suffix(content_type)}"
     avatar_path.write_bytes(avatar_bytes)
