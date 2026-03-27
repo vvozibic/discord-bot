@@ -1,0 +1,12 @@
+{
+  "name": "discord-bot-card-renderer",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Node sidecar renderer for Mindo AI social cards.",
+  "scripts": {
+    "render:card": "node renderer/render-profile-card.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.97"
+  }
+}
