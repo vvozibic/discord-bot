@@ -13,7 +13,7 @@ PROFILE_CARD_CACHE_DIR = Path(
 PROFILE_CARD_BADGE_TEXT = os.getenv("PROFILE_CARD_BADGE_TEXT", "Mindo Early Believer")
 NODE_BIN = os.getenv("NODE_BIN", "node")
 RENDERER_SCRIPT = Path(__file__).resolve().parent / "renderer" / "render-profile-card.mjs"
-TEMPLATE_PATH = Path(__file__).resolve().parent / "renderer" / "templates" / "mindoshare-social-card.svg"
+TEMPLATE_PATH = Path(__file__).resolve().parent / "renderer" / "templates" / "mindoshare-social-card.jpg"
 
 _AVATAR_DIR = PROFILE_CARD_CACHE_DIR / "avatars"
 _CARD_DIR = PROFILE_CARD_CACHE_DIR / "cards"
