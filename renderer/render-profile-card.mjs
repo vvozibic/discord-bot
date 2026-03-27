@@ -2,6 +2,9 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 
+const BASE_TEMPLATE_WIDTH = 850
+const BASE_TEMPLATE_HEIGHT = 1536
+
 function parseArgs(argv) {
   const parsed = {}
   for (let index = 0; index < argv.length; index += 1) {
@@ -39,21 +42,43 @@ function registerFonts() {
   }
 }
 
-function fitFontSize(ctx, text, maxWidth, startingSize, family) {
+function fitFontSize(ctx, text, maxWidth, startingSize, family, minSize = 30) {
   let size = startingSize
-  while (size >= 30) {
+  while (size >= minSize) {
     ctx.font = `${family.includes('Bold') ? '700' : '400'} ${size}px "${family}"`
     if (ctx.measureText(text).width <= maxWidth) {
       return size
     }
     size -= 2
   }
-  return 30
+  return minSize
 }
 
 function drawCenteredText(ctx, text, centerX, topY) {
   const metrics = ctx.measureText(text)
   ctx.fillText(text, centerX - metrics.width / 2, topY)
+}
+
+function getLayoutMetrics(width, height) {
+  const scaleX = width / BASE_TEMPLATE_WIDTH
+  const scaleY = height / BASE_TEMPLATE_HEIGHT
+  const scale = Math.min(scaleX, scaleY)
+
+  return {
+    scaleX,
+    scaleY,
+    scale,
+    avatarSize: Math.max(132, Math.round(220 * scale)),
+    avatarY: Math.round(228 * scaleY),
+    nameY: Math.round(578 * scaleY),
+    handleY: Math.round(670 * scaleY),
+    nameStartSize: Math.max(40, Math.round(68 * scale)),
+    nameMinSize: Math.max(28, Math.round(34 * scale)),
+    handleStartSize: Math.max(28, Math.round(50 * scale)),
+    handleMinSize: Math.max(22, Math.round(30 * scale)),
+    nameMaxWidth: width - Math.round(120 * scaleX),
+    handleMaxWidth: width - Math.round(130 * scaleX),
+  }
 }
 
 function getInitials(displayName, username) {
@@ -93,19 +118,20 @@ async function main() {
   const ctx = canvas.getContext('2d')
   const width = canvas.width
   const centerX = width / 2
+  const layout = getLayoutMetrics(canvas.width, canvas.height)
   const displayName = args['display-name'].trim() || args.username.trim() || 'X User'
   const username = args.username.replace(/^@/, '').trim()
 
   ctx.drawImage(template, 0, 0, width, canvas.height)
 
-  const avatarSize = 220
+  const avatarSize = layout.avatarSize
   const avatarX = centerX - avatarSize / 2
-  const avatarY = 228
+  const avatarY = layout.avatarY
 
   ctx.save()
   ctx.shadowColor = 'rgba(0, 0, 0, 0.42)'
-  ctx.shadowBlur = 24
-  ctx.shadowOffsetY = 10
+  ctx.shadowBlur = Math.max(14, Math.round(24 * layout.scale))
+  ctx.shadowOffsetY = Math.max(6, Math.round(10 * layout.scale))
   ctx.beginPath()
   ctx.arc(centerX, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
   ctx.closePath()
@@ -124,22 +150,37 @@ async function main() {
     ctx.fillStyle = '#22d3ee'
     ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize)
     const initials = getInitials(displayName, username)
-    ctx.font = '700 82px "Mindo Sans Bold"'
+    const initialsSize = Math.max(42, Math.round(82 * layout.scale))
+    ctx.font = `700 ${initialsSize}px "Mindo Sans Bold"`
     ctx.fillStyle = '#02131a'
-    drawCenteredText(ctx, initials, centerX, avatarY + 145)
+    drawCenteredText(ctx, initials, centerX, avatarY + avatarSize * 0.68)
   }
   ctx.restore()
 
-  const nameSize = fitFontSize(ctx, displayName, width - 120, 68, 'Mindo Sans Bold')
+  const nameSize = fitFontSize(
+    ctx,
+    displayName,
+    layout.nameMaxWidth,
+    layout.nameStartSize,
+    'Mindo Sans Bold',
+    layout.nameMinSize,
+  )
   ctx.font = `700 ${nameSize}px "Mindo Sans Bold"`
   ctx.fillStyle = '#f8fafc'
-  drawCenteredText(ctx, displayName, centerX, 578)
+  drawCenteredText(ctx, displayName, centerX, layout.nameY)
 
   const handleText = `@${username}`
-  const handleSize = fitFontSize(ctx, handleText, width - 130, 50, 'Mindo Sans')
+  const handleSize = fitFontSize(
+    ctx,
+    handleText,
+    layout.handleMaxWidth,
+    layout.handleStartSize,
+    'Mindo Sans',
+    layout.handleMinSize,
+  )
   ctx.font = `400 ${handleSize}px "Mindo Sans"`
   ctx.fillStyle = '#f4f4f5'
-  drawCenteredText(ctx, handleText, centerX, 670)
+  drawCenteredText(ctx, handleText, centerX, layout.handleY)
 
   await mkdir(path.dirname(args.output), { recursive: true })
   const png = await canvas.encode('png')
