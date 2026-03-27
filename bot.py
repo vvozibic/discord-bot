@@ -21,6 +21,7 @@ from profile_card import (
     CARD_ATTACHMENT_NAME,
     build_linked_profile_layout,
     ensure_profile_card,
+    remove_profile_assets,
 )
 
 # ============================================================
@@ -902,6 +903,7 @@ async def xstatus_cmd(interaction: discord.Interaction):
 async def xunlink_cmd(interaction: discord.Interaction):
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     removed = await link_delete(str(interaction.user.id))
+    remove_profile_assets(str(interaction.user.id))
     await interaction.response.send_message("✅ Unlinked." if removed else "You were not linked.", ephemeral=True)
 
 @tree.command(name="verify", description="Upload a screenshot for verification (ephemeral)")

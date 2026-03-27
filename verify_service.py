@@ -4,7 +4,7 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from dotenv import load_dotenv
 import database
-from profile_card import save_profile_card
+from profile_card import save_profile_avatar
 
 load_dotenv()
 
@@ -103,32 +103,24 @@ async def _users_me(access_token: str) -> dict:
             return json.loads(txt)
 
 
-async def _download_profile_image(profile_image_url: str | None) -> bytes | None:
+async def _download_profile_image(profile_image_url: str | None) -> tuple[bytes | None, str | None]:
     if not profile_image_url:
-        return None
+        return None, None
 
     source_url = profile_image_url.replace("_normal", "_400x400")
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
         async with session.get(source_url) as response:
             if response.status >= 400:
-                return None
-            return await response.read()
+                return None, None
+            return await response.read(), response.headers.get("Content-Type")
 
 
-async def _cache_linked_profile_card(discord_id: str, user: dict, verified: bool) -> None:
-    username = (user.get("username") or "").strip()
-    if not username:
-        return
-
-    display_name = (user.get("name") or username).strip()
-    avatar_bytes = await _download_profile_image((user.get("profile_image_url") or "").strip() or None)
-    save_profile_card(
+async def _cache_linked_profile_avatar(discord_id: str, user: dict) -> None:
+    avatar_bytes, content_type = await _download_profile_image((user.get("profile_image_url") or "").strip() or None)
+    save_profile_avatar(
         discord_id,
-        display_name,
-        username,
         avatar_bytes,
-        verified=verified,
-        verified_type=user.get("verified_type"),
+        content_type,
     )
 
 # ---- Routes ----
@@ -207,9 +199,9 @@ async def x_callback(
     }
     await database.save_link(st["discord_id"], link_payload)
     try:
-        await _cache_linked_profile_card(st["discord_id"], user, verified)
+        await _cache_linked_profile_avatar(st["discord_id"], user)
     except Exception as exc:
-        print(f"Failed to cache linked profile card: {exc}")
+        print(f"Failed to cache linked profile avatar: {exc}")
 
     return HTMLResponse(get_success_html(user.get("username")), status_code=200)
 

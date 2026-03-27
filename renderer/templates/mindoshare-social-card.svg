@@ -1,0 +1,44 @@
+<svg width="850" height="1536" viewBox="0 0 850 1536" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgGlowLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(80 210) rotate(30) scale(420 330)">
+      <stop stop-color="#0F5127" stop-opacity="0.64"/>
+      <stop offset="1" stop-color="#14532D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgGlowRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(640 514) rotate(108) scale(520 560)">
+      <stop stop-color="#10552A" stop-opacity="0.40"/>
+      <stop offset="1" stop-color="#166534" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgGlowBottom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(778 1260) rotate(118) scale(420 470)">
+      <stop stop-color="#064E3B" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#065F46" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="badgeFill" x1="80" y1="884" x2="770" y2="884" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A3516" stop-opacity="0.96"/>
+      <stop offset="0.48" stop-color="#115620" stop-opacity="0.97"/>
+      <stop offset="1" stop-color="#0A3516" stop-opacity="0.96"/>
+    </linearGradient>
+    <filter id="softBlur" x="-120" y="-120" width="1100" height="1776" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <rect width="850" height="1536" fill="#031308"/>
+  <ellipse cx="78" cy="220" rx="330" ry="282" fill="url(#bgGlowLeft)"/>
+  <ellipse cx="614" cy="586" rx="420" ry="430" fill="url(#bgGlowRight)"/>
+  <ellipse cx="760" cy="1298" rx="300" ry="340" fill="url(#bgGlowBottom)"/>
+
+  <g filter="url(#softBlur)" opacity="0.18">
+    <ellipse cx="210" cy="894" rx="98" ry="54" fill="#14B8A6"/>
+    <ellipse cx="646" cy="890" rx="120" ry="62" fill="#22C55E"/>
+    <ellipse cx="166" cy="1236" rx="52" ry="30" fill="#14B8A6"/>
+  </g>
+
+  <text x="425" y="120" fill="#F8FAFC" font-size="42" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Social Card on <tspan fill="#4ADE80" font-weight="700">mindoshare.ai</tspan></text>
+
+  <g>
+    <rect x="80" y="820" width="690" height="124" rx="28" fill="url(#badgeFill)"/>
+    <rect x="84" y="824" width="682" height="116" rx="26" stroke="#0F5A2D" stroke-opacity="0.26" stroke-width="2"/>
+    <ellipse cx="204" cy="882" rx="114" ry="60" fill="#14B8A6" fill-opacity="0.16"/>
+    <ellipse cx="652" cy="882" rx="132" ry="64" fill="#22C55E" fill-opacity="0.14"/>
+  </g>
+</svg>
