@@ -21,8 +21,11 @@ from profile_card import (
     CARD_ATTACHMENT_NAME,
     build_linked_profile_layout,
     ensure_profile_card,
+    get_profile_avatar_path,
     remove_profile_assets,
+    save_profile_avatar,
 )
+from x_profile_image import download_profile_image
 
 # ============================================================
 # Config
@@ -142,6 +145,15 @@ async def pending_pop(state: str):
         obj = pending.pop(state, None)
         _atomic_write_json_sync(PENDING_FILE, pending)
         return obj
+
+
+async def _ensure_cached_linked_profile_avatar(discord_id: str, profile_image_url: str | None) -> str | None:
+    existing_avatar = get_profile_avatar_path(discord_id)
+    if existing_avatar:
+        return existing_avatar
+
+    avatar_bytes, content_type = await download_profile_image(profile_image_url)
+    return save_profile_avatar(discord_id, avatar_bytes, content_type)
 
 # ============================================================
 # Link store helpers (DB)
@@ -993,6 +1005,12 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 
         x_username = (x_link.get("x_username") or "").strip()
         x_display_name = (x_link.get("x_name") or x_username or interaction.user.display_name).strip()
+        profile_image_url = (x_link.get("profile_image_url") or "").strip() or None
+        if profile_image_url:
+            try:
+                await _ensure_cached_linked_profile_avatar(str(interaction.user.id), profile_image_url)
+            except Exception as exc:
+                print(f"Failed to refresh linked profile avatar during verify: {exc}")
         profile_card_path = ensure_profile_card(
             str(interaction.user.id),
             x_display_name,

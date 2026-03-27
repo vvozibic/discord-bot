@@ -38,11 +38,15 @@ async def _init_postgres():
                 x_user_id TEXT,
                 x_username TEXT,
                 x_name TEXT,
+                profile_image_url TEXT,
                 verified BOOLEAN,
                 verified_type TEXT,
                 linked_at BIGINT
             )
             """
+        )
+        await conn.execute(
+            "ALTER TABLE x_accounts ADD COLUMN IF NOT EXISTS profile_image_url TEXT"
         )
         await conn.execute(
             """
@@ -86,6 +90,7 @@ async def _init_sqlite():
                 x_user_id TEXT,
                 x_username TEXT,
                 x_name TEXT,
+                profile_image_url TEXT,
                 verified BOOLEAN,
                 verified_type TEXT,
                 linked_at INTEGER
@@ -123,6 +128,10 @@ async def _init_sqlite():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_verification_history_discord_id_ts ON verification_history (discord_id, timestamp DESC)"
         )
+        async with db.execute("PRAGMA table_info(x_accounts)") as cursor:
+            columns = {row[1] for row in await cursor.fetchall()}
+        if "profile_image_url" not in columns:
+            await db.execute("ALTER TABLE x_accounts ADD COLUMN profile_image_url TEXT")
         await db.commit()
 
 
@@ -148,22 +157,24 @@ async def get_link(discord_id: str):
 
 
 async def save_link(discord_id: str, data: dict):
-    # data expects keys: x_user_id, x_username, x_name, verified, verified_type, linked_at
+    # data expects keys: x_user_id, x_username, x_name, profile_image_url, verified, verified_type, linked_at
     linked_at = data.get("linked_at", _now())
     verified = bool(data.get("verified"))
     x_username = data.get("x_username")
+    profile_image_url = data.get("profile_image_url")
 
     if USE_POSTGRES:
         pool = await _ensure_pg_pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO x_accounts (discord_id, x_user_id, x_username, x_name, verified, verified_type, linked_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO x_accounts (discord_id, x_user_id, x_username, x_name, profile_image_url, verified, verified_type, linked_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (discord_id) DO UPDATE SET
                     x_user_id = EXCLUDED.x_user_id,
                     x_username = EXCLUDED.x_username,
                     x_name = EXCLUDED.x_name,
+                    profile_image_url = EXCLUDED.profile_image_url,
                     verified = EXCLUDED.verified,
                     verified_type = EXCLUDED.verified_type,
                     linked_at = EXCLUDED.linked_at
@@ -172,6 +183,7 @@ async def save_link(discord_id: str, data: dict):
                 data.get("x_user_id"),
                 x_username,
                 data.get("x_name"),
+                profile_image_url,
                 verified,
                 data.get("verified_type"),
                 linked_at,
@@ -195,12 +207,13 @@ async def save_link(discord_id: str, data: dict):
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute(
             """
-            INSERT INTO x_accounts (discord_id, x_user_id, x_username, x_name, verified, verified_type, linked_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO x_accounts (discord_id, x_user_id, x_username, x_name, profile_image_url, verified, verified_type, linked_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(discord_id) DO UPDATE SET
                 x_user_id = excluded.x_user_id,
                 x_username = excluded.x_username,
                 x_name = excluded.x_name,
+                profile_image_url = excluded.profile_image_url,
                 verified = excluded.verified,
                 verified_type = excluded.verified_type,
                 linked_at = excluded.linked_at
@@ -210,6 +223,7 @@ async def save_link(discord_id: str, data: dict):
                 data.get("x_user_id"),
                 x_username,
                 data.get("x_name"),
+                profile_image_url,
                 verified,
                 data.get("verified_type"),
                 linked_at,

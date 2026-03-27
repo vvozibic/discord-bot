@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from dotenv import load_dotenv
 import database
 from profile_card import save_profile_avatar
+from x_profile_image import download_profile_image
 
 load_dotenv()
 
@@ -103,20 +104,8 @@ async def _users_me(access_token: str) -> dict:
             return json.loads(txt)
 
 
-async def _download_profile_image(profile_image_url: str | None) -> tuple[bytes | None, str | None]:
-    if not profile_image_url:
-        return None, None
-
-    source_url = profile_image_url.replace("_normal", "_400x400")
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-        async with session.get(source_url) as response:
-            if response.status >= 400:
-                return None, None
-            return await response.read(), response.headers.get("Content-Type")
-
-
 async def _cache_linked_profile_avatar(discord_id: str, user: dict) -> None:
-    avatar_bytes, content_type = await _download_profile_image((user.get("profile_image_url") or "").strip() or None)
+    avatar_bytes, content_type = await download_profile_image((user.get("profile_image_url") or "").strip() or None)
     save_profile_avatar(
         discord_id,
         avatar_bytes,
@@ -193,6 +182,7 @@ async def x_callback(
         "x_user_id": user.get("id"),
         "x_username": user.get("username"),
         "x_name": user.get("name"),
+        "profile_image_url": user.get("profile_image_url"),
         "verified": verified,
         "verified_type": user.get("verified_type"),
         "linked_at": int(time.time()),
