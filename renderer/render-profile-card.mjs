@@ -1,7 +1,13 @@
+import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const FONT_DIR = process.env.PROFILE_CARD_FONT_DIR
+  ? path.resolve(process.env.PROFILE_CARD_FONT_DIR)
+  : path.join(SCRIPT_DIR, 'fonts')
 const BASE_TEMPLATE_WIDTH = 850
 const BASE_TEMPLATE_HEIGHT = 1536
 const TEXT_SCALE_MULTIPLIER = 4
@@ -25,21 +31,63 @@ function parseArgs(argv) {
   return parsed
 }
 
-function registerFonts() {
-  const windir = process.env.WINDIR || 'C:/Windows'
-  const fonts = [
-    { file: 'segoeui.ttf', family: 'Mindo Sans' },
-    { file: 'arial.ttf', family: 'Mindo Sans' },
-    { file: 'segoeuib.ttf', family: 'Mindo Sans Bold' },
-    { file: 'arialbd.ttf', family: 'Mindo Sans Bold' },
-  ]
-
-  for (const font of fonts) {
+function registerFromCandidates(candidates, family) {
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) {
+      continue
+    }
     try {
-      GlobalFonts.registerFromPath(path.join(windir, 'Fonts', font.file), font.family)
+      GlobalFonts.registerFromPath(candidate, family)
+      return candidate
     } catch {
       // Keep trying fallbacks.
     }
+  }
+
+  return null
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths)]
+}
+
+function registerFonts() {
+  const windir = process.env.WINDIR || 'C:/Windows'
+  const regularSource = registerFromCandidates(
+    uniquePaths([
+      path.join(FONT_DIR, 'NotoSans-Regular.ttf'),
+      path.join(windir, 'Fonts', 'segoeui.ttf'),
+      path.join(windir, 'Fonts', 'arial.ttf'),
+      path.join(windir, 'Fonts', 'calibri.ttf'),
+      '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+      '/usr/share/fonts/opentype/noto/NotoSans-Regular.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+      '/System/Library/Fonts/Supplemental/Arial.ttf',
+      '/Library/Fonts/Arial.ttf',
+    ]),
+    'Mindo Sans',
+  )
+  const boldSource = registerFromCandidates(
+    uniquePaths([
+      path.join(FONT_DIR, 'NotoSans-Bold.ttf'),
+      path.join(windir, 'Fonts', 'segoeuib.ttf'),
+      path.join(windir, 'Fonts', 'arialbd.ttf'),
+      path.join(windir, 'Fonts', 'calibrib.ttf'),
+      '/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf',
+      '/usr/share/fonts/opentype/noto/NotoSans-Bold.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+      '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
+      '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+      '/Library/Fonts/Arial Bold.ttf',
+    ]),
+    'Mindo Sans Bold',
+  )
+
+  if (!regularSource || !boldSource) {
+    throw new Error(
+      `Unable to register profile card fonts. Regular=${regularSource || 'missing'} Bold=${boldSource || 'missing'}`,
+    )
   }
 }
 
