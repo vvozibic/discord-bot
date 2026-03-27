@@ -18,6 +18,7 @@ RENDERER_SCRIPT = Path(__file__).resolve().parent / "renderer" / "render-profile
 TEMPLATE_PATH = Path(__file__).resolve().parent / "renderer" / "templates" / "mindoshare-social-card.jpg"
 BASE_TEMPLATE_WIDTH = 850
 BASE_TEMPLATE_HEIGHT = 1536
+TEXT_SCALE_MULTIPLIER = 4
 
 _AVATAR_DIR = PROFILE_CARD_CACHE_DIR / "avatars"
 _CARD_DIR = PROFILE_CARD_CACHE_DIR / "cards"
@@ -139,6 +140,15 @@ def _draw_centered_text(
     draw.text((center_x - width / 2, top_y), text, font=font, fill=fill)
 
 
+def _measure_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
 def _build_avatar_image(
     avatar_path: str | None,
     display_name: str,
@@ -199,37 +209,84 @@ def _render_profile_card_with_pillow(
     canvas.alpha_composite(avatar, (avatar_x, avatar_y))
 
     draw = ImageDraw.Draw(canvas)
+    name_max_width = width - round(120 * scale_x)
+    handle_max_width = width - round(130 * scale_x)
+    name_start_size = max(40, round(68 * scale * TEXT_SCALE_MULTIPLIER))
+    handle_start_size = max(28, round(50 * scale * TEXT_SCALE_MULTIPLIER))
+    name_min_size = max(28, round(34 * scale))
+    handle_min_size = max(22, round(30 * scale))
+    content_top = avatar_y + avatar_size + max(24, round(54 * scale_y))
+    content_bottom = round(820 * scale_y) - max(20, round(44 * scale_y))
+    text_line_gap = max(12, round(24 * scale_y))
+    available_height = max(0, content_bottom - content_top)
+
     fitted_name, name_font = _fit_text(
         draw,
         display_name or username or "X User",
-        width - round(120 * scale_x),
-        size=max(40, round(68 * scale)),
-        min_size=max(28, round(34 * scale)),
+        name_max_width,
+        size=name_start_size,
+        min_size=name_min_size,
         bold=True,
-    )
-    _draw_centered_text(
-        draw,
-        fitted_name,
-        center_x,
-        round(578 * scale_y),
-        font=name_font,
-        fill="#f8fafc",
     )
 
     handle_text = f"@{(username or '').lstrip('@')}"
     fitted_handle, handle_font = _fit_text(
         draw,
         handle_text,
-        width - round(130 * scale_x),
-        size=max(28, round(50 * scale)),
-        min_size=max(22, round(30 * scale)),
+        handle_max_width,
+        size=handle_start_size,
+        min_size=handle_min_size,
         bold=False,
     )
+
+    _, name_height = _measure_text(draw, fitted_name, name_font)
+    _, handle_height = _measure_text(draw, fitted_handle, handle_font)
+
+    while (
+        name_height + text_line_gap + handle_height > available_height
+        and (name_start_size > name_min_size or handle_start_size > handle_min_size)
+    ):
+        if name_start_size > name_min_size:
+            name_start_size -= 2
+        if handle_start_size > handle_min_size:
+            handle_start_size -= 2
+
+        fitted_name, name_font = _fit_text(
+            draw,
+            display_name or username or "X User",
+            name_max_width,
+            size=name_start_size,
+            min_size=name_min_size,
+            bold=True,
+        )
+        fitted_handle, handle_font = _fit_text(
+            draw,
+            handle_text,
+            handle_max_width,
+            size=handle_start_size,
+            min_size=handle_min_size,
+            bold=False,
+        )
+        _, name_height = _measure_text(draw, fitted_name, name_font)
+        _, handle_height = _measure_text(draw, fitted_handle, handle_font)
+
+    text_block_height = name_height + text_line_gap + handle_height
+    text_top = round(content_top + max(0, available_height - text_block_height) / 2)
+
+    _draw_centered_text(
+        draw,
+        fitted_name,
+        center_x,
+        text_top,
+        font=name_font,
+        fill="#f8fafc",
+    )
+
     _draw_centered_text(
         draw,
         fitted_handle,
         center_x,
-        round(670 * scale_y),
+        text_top + name_height + text_line_gap,
         font=handle_font,
         fill="#f4f4f5",
     )

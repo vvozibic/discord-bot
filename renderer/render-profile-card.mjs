@@ -4,6 +4,7 @@ import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 
 const BASE_TEMPLATE_WIDTH = 850
 const BASE_TEMPLATE_HEIGHT = 1536
+const TEXT_SCALE_MULTIPLIER = 4
 
 function parseArgs(argv) {
   const parsed = {}
@@ -59,6 +60,21 @@ function drawCenteredText(ctx, text, centerX, topY) {
   ctx.fillText(text, centerX - metrics.width / 2, topY)
 }
 
+function getTextMetrics(ctx, text) {
+  const metrics = ctx.measureText(text)
+  const ascent = Math.ceil(metrics.actualBoundingBoxAscent || 0)
+  const descent = Math.ceil(metrics.actualBoundingBoxDescent || 0)
+  const fallbackSize = Number.parseInt(ctx.font.match(/(\d+)px/)?.[1] || '0', 10)
+  const height = Math.max(ascent + descent, fallbackSize)
+
+  return {
+    ascent,
+    descent,
+    height,
+    width: metrics.width,
+  }
+}
+
 function getLayoutMetrics(width, height) {
   const scaleX = width / BASE_TEMPLATE_WIDTH
   const scaleY = height / BASE_TEMPLATE_HEIGHT
@@ -70,14 +86,71 @@ function getLayoutMetrics(width, height) {
     scale,
     avatarSize: Math.max(132, Math.round(220 * scale)),
     avatarY: Math.round(228 * scaleY),
-    nameY: Math.round(578 * scaleY),
-    handleY: Math.round(670 * scaleY),
-    nameStartSize: Math.max(40, Math.round(68 * scale)),
+    badgeTop: Math.round(820 * scaleY),
+    avatarTextGap: Math.max(24, Math.round(54 * scaleY)),
+    textLineGap: Math.max(12, Math.round(24 * scaleY)),
+    badgeTextGap: Math.max(20, Math.round(44 * scaleY)),
+    nameStartSize: Math.max(40, Math.round(68 * scale * TEXT_SCALE_MULTIPLIER)),
     nameMinSize: Math.max(28, Math.round(34 * scale)),
-    handleStartSize: Math.max(28, Math.round(50 * scale)),
+    handleStartSize: Math.max(28, Math.round(50 * scale * TEXT_SCALE_MULTIPLIER)),
     handleMinSize: Math.max(22, Math.round(30 * scale)),
     nameMaxWidth: width - Math.round(120 * scaleX),
     handleMaxWidth: width - Math.round(130 * scaleX),
+  }
+}
+
+function resolveTextLayout(ctx, displayName, handleText, layout) {
+  let nameSize = fitFontSize(
+    ctx,
+    displayName,
+    layout.nameMaxWidth,
+    layout.nameStartSize,
+    'Mindo Sans Bold',
+    layout.nameMinSize,
+  )
+  let handleSize = fitFontSize(
+    ctx,
+    handleText,
+    layout.handleMaxWidth,
+    layout.handleStartSize,
+    'Mindo Sans',
+    layout.handleMinSize,
+  )
+
+  const contentTop = layout.avatarY + layout.avatarSize + layout.avatarTextGap
+  const contentBottom = layout.badgeTop - layout.badgeTextGap
+  const availableHeight = Math.max(0, contentBottom - contentTop)
+  let nameMetrics
+  let handleMetrics
+
+  while (true) {
+    ctx.font = `700 ${nameSize}px "Mindo Sans Bold"`
+    nameMetrics = getTextMetrics(ctx, displayName)
+    ctx.font = `400 ${handleSize}px "Mindo Sans"`
+    handleMetrics = getTextMetrics(ctx, handleText)
+
+    const blockHeight = nameMetrics.height + layout.textLineGap + handleMetrics.height
+    if (
+      blockHeight <= availableHeight ||
+      (nameSize <= layout.nameMinSize && handleSize <= layout.handleMinSize)
+    ) {
+      const extraSpace = Math.max(0, availableHeight - blockHeight)
+      const nameTop = Math.round(contentTop + extraSpace / 2)
+      const handleTop = nameTop + nameMetrics.height + layout.textLineGap
+      return {
+        nameSize,
+        handleSize,
+        nameBaselineY: nameTop + Math.max(nameMetrics.ascent, 0),
+        handleBaselineY: handleTop + Math.max(handleMetrics.ascent, 0),
+      }
+    }
+
+    if (nameSize > layout.nameMinSize) {
+      nameSize -= 2
+    }
+    if (handleSize > layout.handleMinSize) {
+      handleSize -= 2
+    }
   }
 }
 
@@ -157,30 +230,15 @@ async function main() {
   }
   ctx.restore()
 
-  const nameSize = fitFontSize(
-    ctx,
-    displayName,
-    layout.nameMaxWidth,
-    layout.nameStartSize,
-    'Mindo Sans Bold',
-    layout.nameMinSize,
-  )
-  ctx.font = `700 ${nameSize}px "Mindo Sans Bold"`
-  ctx.fillStyle = '#f8fafc'
-  drawCenteredText(ctx, displayName, centerX, layout.nameY)
-
   const handleText = `@${username}`
-  const handleSize = fitFontSize(
-    ctx,
-    handleText,
-    layout.handleMaxWidth,
-    layout.handleStartSize,
-    'Mindo Sans',
-    layout.handleMinSize,
-  )
-  ctx.font = `400 ${handleSize}px "Mindo Sans"`
+  const textLayout = resolveTextLayout(ctx, displayName, handleText, layout)
+  ctx.font = `700 ${textLayout.nameSize}px "Mindo Sans Bold"`
+  ctx.fillStyle = '#f8fafc'
+  drawCenteredText(ctx, displayName, centerX, textLayout.nameBaselineY)
+
+  ctx.font = `400 ${textLayout.handleSize}px "Mindo Sans"`
   ctx.fillStyle = '#f4f4f5'
-  drawCenteredText(ctx, handleText, centerX, layout.handleY)
+  drawCenteredText(ctx, handleText, centerX, textLayout.handleBaselineY)
 
   await mkdir(path.dirname(args.output), { recursive: true })
   const png = await canvas.encode('png')
