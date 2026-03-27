@@ -16,6 +16,9 @@ PROFILE_CARD_BADGE_TEXT = os.getenv("PROFILE_CARD_BADGE_TEXT", "Mindo Early Beli
 NODE_BIN = os.getenv("NODE_BIN", "").strip()
 RENDERER_SCRIPT = Path(__file__).resolve().parent / "renderer" / "render-profile-card.mjs"
 TEMPLATE_PATH = Path(__file__).resolve().parent / "renderer" / "templates" / "mindoshare-social-card.jpg"
+PROFILE_CARD_FONT_DIR = Path(
+    os.getenv("PROFILE_CARD_FONT_DIR", Path(__file__).resolve().parent / "renderer" / "fonts")
+)
 BASE_TEMPLATE_WIDTH = 850
 BASE_TEMPLATE_HEIGHT = 1536
 TEXT_SCALE_MULTIPLIER = 4
@@ -56,35 +59,40 @@ def _resolve_node_bin() -> str | None:
 
 
 def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    font_candidates = [
-        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-    ]
-
+    bundled_font = PROFILE_CARD_FONT_DIR / ("NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf")
     windows_fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
-    if bold:
-        font_candidates.extend(
-            [
-                str(windows_fonts / "segoeuib.ttf"),
-                str(windows_fonts / "arialbd.ttf"),
-                str(windows_fonts / "calibrib.ttf"),
-            ]
-        )
-    else:
-        font_candidates.extend(
-            [
-                str(windows_fonts / "segoeui.ttf"),
-                str(windows_fonts / "arial.ttf"),
-                str(windows_fonts / "calibri.ttf"),
-            ]
-        )
+    linux_fonts = [
+        Path("/usr/share/fonts/truetype/noto") / ("NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf"),
+        Path("/usr/share/fonts/opentype/noto") / ("NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu") / ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"),
+        Path("/usr/share/fonts/truetype/liberation2")
+        / ("LiberationSans-Bold.ttf" if bold else "LiberationSans-Regular.ttf"),
+    ]
+    mac_fonts = [
+        Path("/System/Library/Fonts/Supplemental") / ("Arial Bold.ttf" if bold else "Arial.ttf"),
+        Path("/Library/Fonts") / ("Arial Bold.ttf" if bold else "Arial.ttf"),
+    ]
+    font_candidates = [
+        bundled_font,
+        windows_fonts / ("segoeuib.ttf" if bold else "segoeui.ttf"),
+        windows_fonts / ("arialbd.ttf" if bold else "arial.ttf"),
+        windows_fonts / ("calibrib.ttf" if bold else "calibri.ttf"),
+        *linux_fonts,
+        *mac_fonts,
+    ]
 
     for font_name in font_candidates:
         try:
-            return ImageFont.truetype(font_name, size)
+            if Path(font_name).exists():
+                return ImageFont.truetype(str(font_name), size)
         except OSError:
             continue
 
-    return ImageFont.load_default()
+    checked_paths = ", ".join(str(path) for path in font_candidates[:6])
+    raise RuntimeError(
+        "No scalable font available for profile card rendering. "
+        f"Checked: {checked_paths}"
+    )
 
 
 def _fit_text(
