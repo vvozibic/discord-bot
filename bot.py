@@ -722,6 +722,7 @@ class VerificationResultLayout(discord.ui.LayoutView):
         super().__init__(timeout=LINK_TTL)
 
         container = discord.ui.Container(accent_color=_result_color(result))
+        verify_mention = slash_cmd_mention("verify")
 
         if result.handle_match_error:
             status_text = (
@@ -784,6 +785,36 @@ class VerificationResultLayout(discord.ui.LayoutView):
             container.add_item(
                 discord.ui.TextDisplay(f"**⚠️ Role assignment**\n{role_note}")
             )
+
+        if not result.detected_score:
+            retry_copy = (
+                f"Click {verify_mention} again and upload a clearer uncropped screenshot."
+            )
+            if result.handle_match_error:
+                retry_copy = (
+                    f"Click {verify_mention} again and upload a screenshot that matches your linked X account."
+                )
+
+            container.add_item(
+                discord.ui.TextDisplay(f"**Retry**\n{retry_copy}")
+            )
+
+            retry_row = discord.ui.ActionRow()
+            retry_button = discord.ui.Button(
+                label="Retry /verify",
+                style=discord.ButtonStyle.primary,
+                emoji="🔁",
+            )
+
+            async def retry_callback(interaction: discord.Interaction) -> None:
+                await interaction.response.send_message(
+                    retry_copy,
+                    ephemeral=True,
+                )
+
+            retry_button.callback = retry_callback
+            retry_row.add_item(retry_button)
+            container.add_item(retry_row)
 
         container.add_item(
             discord.ui.TextDisplay("Mindo AI Verifier")

@@ -10,7 +10,7 @@ const FONT_DIR = process.env.PROFILE_CARD_FONT_DIR
   : path.join(SCRIPT_DIR, 'fonts')
 const BASE_TEMPLATE_WIDTH = 850
 const BASE_TEMPLATE_HEIGHT = 1536
-const TEXT_SCALE_MULTIPLIER = 2
+const TEXT_SCALE_MULTIPLIER = 1
 
 function parseArgs(argv) {
   const parsed = {}
