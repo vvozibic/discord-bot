@@ -1035,28 +1035,31 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
         )
 
         x_username = (x_link.get("x_username") or "").strip()
-        x_display_name = (x_link.get("x_name") or x_username or interaction.user.display_name).strip()
-        profile_image_url = (x_link.get("profile_image_url") or "").strip() or None
-        if profile_image_url:
-            try:
-                await _ensure_cached_linked_profile_avatar(str(interaction.user.id), profile_image_url)
-            except Exception as exc:
-                print(f"Failed to refresh linked profile avatar during verify: {exc}")
-        profile_card_path = ensure_profile_card(
-            str(interaction.user.id),
-            x_display_name,
-            x_username or interaction.user.display_name,
-            verified=bool(x_link.get("verified")),
-            verified_type=x_link.get("verified_type"),
-        )
-
         profile_card_url = None
         followup_kwargs = {
             "ephemeral": True,
         }
-        if profile_card_path and os.path.exists(profile_card_path):
-            profile_card_url = f"attachment://{CARD_ATTACHMENT_NAME}"
-            followup_kwargs["file"] = discord.File(profile_card_path, filename=CARD_ATTACHMENT_NAME)
+        should_attach_profile_card = bool(result.detected_score) and not result.handle_match_error
+        if should_attach_profile_card:
+            x_display_name = (x_link.get("x_name") or x_username or interaction.user.display_name).strip()
+            profile_image_url = (x_link.get("profile_image_url") or "").strip() or None
+            if profile_image_url:
+                try:
+                    await _ensure_cached_linked_profile_avatar(str(interaction.user.id), profile_image_url)
+                except Exception as exc:
+                    print(f"Failed to refresh linked profile avatar during verify: {exc}")
+
+            profile_card_path = ensure_profile_card(
+                str(interaction.user.id),
+                x_display_name,
+                x_username or interaction.user.display_name,
+                verified=bool(x_link.get("verified")),
+                verified_type=x_link.get("verified_type"),
+            )
+
+            if profile_card_path and os.path.exists(profile_card_path):
+                profile_card_url = f"attachment://{CARD_ATTACHMENT_NAME}"
+                followup_kwargs["file"] = discord.File(profile_card_path, filename=CARD_ATTACHMENT_NAME)
 
         result_layout = build_result_layout(
             interaction.user,
