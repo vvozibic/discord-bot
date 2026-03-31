@@ -586,6 +586,19 @@ class VerificationResult:
             except ValueError:
                 self.role_name = None
 
+
+def resolve_profile_card_tier(result: VerificationResult) -> str | None:
+    if result.handle_match_error or not result.detected_score:
+        return None
+
+    if result.role_name == "Signal Lite":
+        return "bronze"
+    if result.role_name == "Signal Amplifier":
+        return "silver"
+    if result.role_name == "Top Signal":
+        return "gold"
+    return "bronze"
+
 # ============================================================
 # Discord bot (Slash commands + V2 replies)
 # ============================================================
@@ -1041,6 +1054,7 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
         }
         should_attach_profile_card = bool(result.detected_score) and not result.handle_match_error
         if should_attach_profile_card:
+            card_tier = resolve_profile_card_tier(result)
             x_display_name = (x_link.get("x_name") or x_username or interaction.user.display_name).strip()
             profile_image_url = (x_link.get("profile_image_url") or "").strip() or None
             if profile_image_url:
@@ -1053,6 +1067,7 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
                 str(interaction.user.id),
                 x_display_name,
                 x_username or interaction.user.display_name,
+                card_tier=card_tier,
                 verified=bool(x_link.get("verified")),
                 verified_type=x_link.get("verified_type"),
             )
