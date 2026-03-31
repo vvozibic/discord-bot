@@ -51,10 +51,20 @@ function uniquePaths(paths) {
   return [...new Set(paths)]
 }
 
+function usesTierThemeLayout(templatePath) {
+  const normalized = path.basename(templatePath).toLowerCase()
+  return [
+    'mindoshare-social-card-bronze.jpg',
+    'mindoshare-social-card-silver.png',
+    'mindoshare-social-card-gold.png',
+  ].includes(normalized)
+}
+
 function registerFonts() {
   const windir = process.env.WINDIR || 'C:/Windows'
   const regularSource = registerFromCandidates(
     uniquePaths([
+      path.join(FONT_DIR, 'Onest-Regular.ttf'),
       path.join(FONT_DIR, 'NotoSans-Regular.ttf'),
       path.join(windir, 'Fonts', 'segoeui.ttf'),
       path.join(windir, 'Fonts', 'arial.ttf'),
@@ -70,6 +80,7 @@ function registerFonts() {
   )
   const boldSource = registerFromCandidates(
     uniquePaths([
+      path.join(FONT_DIR, 'Onest-Bold.ttf'),
       path.join(FONT_DIR, 'NotoSans-Bold.ttf'),
       path.join(windir, 'Fonts', 'segoeuib.ttf'),
       path.join(windir, 'Fonts', 'arialbd.ttf'),
@@ -108,6 +119,21 @@ function drawCenteredText(ctx, text, centerX, topY) {
   ctx.fillText(text, centerX - metrics.width / 2, topY)
 }
 
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  const safeRadius = Math.min(radius, width / 2, height / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + safeRadius, y)
+  ctx.lineTo(x + width - safeRadius, y)
+  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius)
+  ctx.lineTo(x + width, y + height - safeRadius)
+  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height)
+  ctx.lineTo(x + safeRadius, y + height)
+  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius)
+  ctx.lineTo(x, y + safeRadius)
+  ctx.quadraticCurveTo(x, y, x + safeRadius, y)
+  ctx.closePath()
+}
+
 function getTextMetrics(ctx, text) {
   const metrics = ctx.measureText(text)
   const ascent = Math.ceil(metrics.actualBoundingBoxAscent || 0)
@@ -123,15 +149,35 @@ function getTextMetrics(ctx, text) {
   }
 }
 
-function getLayoutMetrics(width, height) {
+function getLayoutMetrics(width, height, useTierThemeLayout = false) {
   const scaleX = width / BASE_TEMPLATE_WIDTH
   const scaleY = height / BASE_TEMPLATE_HEIGHT
   const scale = Math.min(scaleX, scaleY)
+
+  if (useTierThemeLayout) {
+    return {
+      scaleX,
+      scaleY,
+      scale,
+      useFixedTextTop: true,
+      fixedTextTop: Math.round(height * 0.455),
+      avatarSize: Math.max(132, Math.round(Math.min(width, height) * 0.17)),
+      avatarY: Math.round(height * 0.085),
+      textLineGap: Math.max(8, Math.round(height * 0.012)),
+      nameStartSize: Math.max(34, Math.round(width * 0.072)),
+      nameMinSize: Math.max(26, Math.round(width * 0.05)),
+      handleStartSize: Math.max(24, Math.round(width * 0.05)),
+      handleMinSize: Math.max(20, Math.round(width * 0.038)),
+      nameMaxWidth: Math.round(width * 0.78),
+      handleMaxWidth: Math.round(width * 0.78),
+    }
+  }
 
   return {
     scaleX,
     scaleY,
     scale,
+    useFixedTextTop: false,
     avatarSize: Math.max(132, Math.round(220 * scale)),
     avatarY: Math.round(228 * scaleY),
     badgeTop: Math.round(820 * scaleY),
@@ -165,9 +211,13 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
     layout.handleMinSize,
   )
 
-  const contentTop = layout.avatarY + layout.avatarSize + layout.avatarTextGap
-  const contentBottom = layout.badgeTop - layout.badgeTextGap
-  const availableHeight = Math.max(0, contentBottom - contentTop)
+  const contentTop = layout.useFixedTextTop
+    ? layout.fixedTextTop
+    : layout.avatarY + layout.avatarSize + layout.avatarTextGap
+  const contentBottom = layout.useFixedTextTop
+    ? layout.fixedTextTop
+    : layout.badgeTop - layout.badgeTextGap
+  const availableHeight = layout.useFixedTextTop ? 0 : Math.max(0, contentBottom - contentTop)
   let nameMetrics
   let handleMetrics
 
@@ -182,14 +232,22 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
       blockHeight <= availableHeight ||
       (nameSize <= layout.nameMinSize && handleSize <= layout.handleMinSize)
     ) {
-      const extraSpace = Math.max(0, availableHeight - blockHeight)
-      const nameTop = Math.round(contentTop + extraSpace / 2)
+      const extraSpace = layout.useFixedTextTop ? 0 : Math.max(0, availableHeight - blockHeight)
+      const nameTop = layout.useFixedTextTop
+        ? layout.fixedTextTop
+        : Math.round(contentTop + extraSpace / 2)
       const handleTop = nameTop + nameMetrics.height + layout.textLineGap
       return {
         nameSize,
         handleSize,
+        nameHeight: nameMetrics.height,
+        nameWidth: nameMetrics.width,
+        handleHeight: handleMetrics.height,
+        handleWidth: handleMetrics.width,
         nameBaselineY: nameTop + Math.max(nameMetrics.ascent, 0),
         handleBaselineY: handleTop + Math.max(handleMetrics.ascent, 0),
+        textTop: nameTop,
+        textBlockHeight: blockHeight,
       }
     }
 
@@ -239,7 +297,11 @@ async function main() {
   const ctx = canvas.getContext('2d')
   const width = canvas.width
   const centerX = width / 2
-  const layout = getLayoutMetrics(canvas.width, canvas.height)
+  const layout = getLayoutMetrics(
+    canvas.width,
+    canvas.height,
+    usesTierThemeLayout(args.template),
+  )
   const displayName = args['display-name'].trim() || args.username.trim() || 'X User'
   const username = args.username.replace(/^@/, '').trim()
 
@@ -248,6 +310,39 @@ async function main() {
   const avatarSize = layout.avatarSize
   const avatarX = centerX - avatarSize / 2
   const avatarY = layout.avatarY
+  const handleText = `@${username}`
+  const textLayout = resolveTextLayout(ctx, displayName, handleText, layout)
+
+  if (layout.useFixedTextTop) {
+    const avatarCoverSize = avatarSize + Math.max(14, Math.round(Math.min(width, canvas.height) * 0.025))
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(centerX, avatarY + avatarSize / 2, avatarCoverSize / 2, 0, Math.PI * 2)
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(18, 22, 20, 0.92)'
+    ctx.fill()
+    ctx.restore()
+
+    const panelWidth = Math.round(width * 0.68)
+    const panelHeight = Math.max(
+      Math.round(canvas.height * 0.15),
+      textLayout.textBlockHeight + Math.round(canvas.height * 0.04),
+    )
+    const panelX = Math.round(centerX - panelWidth / 2)
+    const panelY = Math.round(textLayout.textTop - Math.round(canvas.height * 0.022))
+    ctx.save()
+    drawRoundedRect(
+      ctx,
+      panelX,
+      panelY,
+      panelWidth,
+      panelHeight,
+      Math.max(18, Math.round(width * 0.03)),
+    )
+    ctx.fillStyle = 'rgba(8, 10, 12, 0.92)'
+    ctx.fill()
+    ctx.restore()
+  }
 
   ctx.save()
   ctx.shadowColor = 'rgba(0, 0, 0, 0.42)'
@@ -278,8 +373,6 @@ async function main() {
   }
   ctx.restore()
 
-  const handleText = `@${username}`
-  const textLayout = resolveTextLayout(ctx, displayName, handleText, layout)
   ctx.font = `700 ${textLayout.nameSize}px "Mindo Sans Bold"`
   ctx.fillStyle = '#f8fafc'
   drawCenteredText(ctx, displayName, centerX, textLayout.nameBaselineY)

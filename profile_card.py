@@ -15,7 +15,13 @@ PROFILE_CARD_CACHE_DIR = Path(
 PROFILE_CARD_BADGE_TEXT = os.getenv("PROFILE_CARD_BADGE_TEXT", "Mindo Early Believer")
 NODE_BIN = os.getenv("NODE_BIN", "").strip()
 RENDERER_SCRIPT = Path(__file__).resolve().parent / "renderer" / "render-profile-card.mjs"
-TEMPLATE_PATH = Path(__file__).resolve().parent / "renderer" / "templates" / "mindoshare-social-card.jpg"
+TEMPLATE_DIR = Path(__file__).resolve().parent / "renderer" / "templates"
+TEMPLATE_PATH = TEMPLATE_DIR / "mindoshare-social-card.jpg"
+PROFILE_CARD_TIER_TEMPLATE_PATHS = {
+    "bronze": TEMPLATE_DIR / "mindoshare-social-card-bronze.jpg",
+    "silver": TEMPLATE_DIR / "mindoshare-social-card-silver.png",
+    "gold": TEMPLATE_DIR / "mindoshare-social-card-gold.png",
+}
 PROFILE_CARD_FONT_DIR = Path(
     os.getenv("PROFILE_CARD_FONT_DIR", Path(__file__).resolve().parent / "renderer" / "fonts")
 )
@@ -59,7 +65,10 @@ def _resolve_node_bin() -> str | None:
 
 
 def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    bundled_font = PROFILE_CARD_FONT_DIR / ("NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf")
+    bundled_fonts = [
+        PROFILE_CARD_FONT_DIR / ("Onest-Bold.ttf" if bold else "Onest-Regular.ttf"),
+        PROFILE_CARD_FONT_DIR / ("NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf"),
+    ]
     windows_fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
     linux_fonts = [
         Path("/usr/share/fonts/truetype/noto") / ("NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf"),
@@ -73,7 +82,7 @@ def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | Ima
         Path("/Library/Fonts") / ("Arial Bold.ttf" if bold else "Arial.ttf"),
     ]
     font_candidates = [
-        bundled_font,
+        *bundled_fonts,
         windows_fonts / ("segoeuib.ttf" if bold else "segoeui.ttf"),
         windows_fonts / ("arialbd.ttf" if bold else "arial.ttf"),
         windows_fonts / ("calibrib.ttf" if bold else "calibri.ttf"),
@@ -188,13 +197,69 @@ def _build_avatar_image(
     return avatar
 
 
+def _resolve_template_path(card_tier: str | None = None) -> Path:
+    normalized_tier = (card_tier or "").strip().lower()
+    tier_template = PROFILE_CARD_TIER_TEMPLATE_PATHS.get(normalized_tier)
+    if tier_template and tier_template.exists():
+        return tier_template
+    return TEMPLATE_PATH
+
+
+def _uses_tier_theme_layout(template_path: Path) -> bool:
+    normalized_name = template_path.name.lower()
+    return any(path.name.lower() == normalized_name for path in PROFILE_CARD_TIER_TEMPLATE_PATHS.values())
+
+
+def _draw_tier_theme_backdrop(
+    canvas: Image.Image,
+    center_x: float,
+    avatar_y: int,
+    avatar_size: int,
+    text_top: int,
+    text_block_height: int,
+    width: int,
+    height: int,
+) -> None:
+    avatar_cover_size = avatar_size + max(14, round(min(width, height) * 0.025))
+    avatar_cover = Image.new("RGBA", (avatar_cover_size, avatar_cover_size), (0, 0, 0, 0))
+    cover_draw = ImageDraw.Draw(avatar_cover)
+    cover_draw.ellipse(
+        (0, 0, avatar_cover_size - 1, avatar_cover_size - 1),
+        fill=(18, 22, 20, 235),
+    )
+    avatar_cover = avatar_cover.filter(ImageFilter.GaussianBlur(radius=max(2, round(width * 0.004))))
+    canvas.alpha_composite(
+        avatar_cover,
+        (
+            round(center_x - avatar_cover_size / 2),
+            round(avatar_y - (avatar_cover_size - avatar_size) / 2),
+        ),
+    )
+
+    panel_width = round(width * 0.68)
+    panel_height = max(round(height * 0.15), text_block_height + round(height * 0.04))
+    panel_x = round(center_x - panel_width / 2)
+    panel_y = round(text_top - round(height * 0.022))
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    radius = max(18, round(width * 0.03))
+    panel_draw.rounded_rectangle(
+        (0, 0, panel_width - 1, panel_height - 1),
+        radius=radius,
+        fill=(8, 10, 12, 235),
+    )
+    panel = panel.filter(ImageFilter.GaussianBlur(radius=max(1, round(width * 0.0025))))
+    canvas.alpha_composite(panel, (panel_x, panel_y))
+
+
 def _render_profile_card_with_pillow(
     card_path: Path,
+    template_path: Path,
     display_name: str,
     username: str,
     avatar_path: str | None,
 ) -> None:
-    with Image.open(TEMPLATE_PATH) as source:
+    with Image.open(template_path) as source:
         canvas = source.convert("RGBA")
 
     width, height = canvas.size
@@ -202,9 +267,14 @@ def _render_profile_card_with_pillow(
     scale_x = width / BASE_TEMPLATE_WIDTH
     scale_y = height / BASE_TEMPLATE_HEIGHT
     scale = min(scale_x, scale_y)
+    use_tier_theme_layout = _uses_tier_theme_layout(template_path)
 
-    avatar_size = max(132, round(220 * scale))
-    avatar_y = round(228 * scale_y)
+    if use_tier_theme_layout:
+        avatar_size = max(132, round(min(width, height) * 0.17))
+        avatar_y = round(height * 0.085)
+    else:
+        avatar_size = max(132, round(220 * scale))
+        avatar_y = round(228 * scale_y)
     avatar_x = round(center_x - avatar_size / 2)
 
     shadow = Image.new("RGBA", (avatar_size + 48, avatar_size + 48), (0, 0, 0, 0))
@@ -214,19 +284,31 @@ def _render_profile_card_with_pillow(
     canvas.alpha_composite(shadow, (avatar_x - 24, avatar_y - 8))
 
     avatar = _build_avatar_image(avatar_path, display_name, username, avatar_size)
-    canvas.alpha_composite(avatar, (avatar_x, avatar_y))
 
     draw = ImageDraw.Draw(canvas)
-    name_max_width = width - round(120 * scale_x)
-    handle_max_width = width - round(130 * scale_x)
-    name_start_size = max(40, round(68 * scale * TEXT_SCALE_MULTIPLIER))
-    handle_start_size = max(28, round(50 * scale * TEXT_SCALE_MULTIPLIER))
-    name_min_size = max(28, round(34 * scale))
-    handle_min_size = max(22, round(30 * scale))
-    content_top = avatar_y + avatar_size + max(24, round(54 * scale_y))
-    content_bottom = round(820 * scale_y) - max(20, round(44 * scale_y))
-    text_line_gap = max(12, round(24 * scale_y))
-    available_height = max(0, content_bottom - content_top)
+    if use_tier_theme_layout:
+        name_max_width = round(width * 0.78)
+        handle_max_width = round(width * 0.78)
+        name_start_size = max(34, round(width * 0.072))
+        handle_start_size = max(24, round(width * 0.05))
+        name_min_size = max(26, round(width * 0.05))
+        handle_min_size = max(20, round(width * 0.038))
+        text_line_gap = max(8, round(height * 0.012))
+        fixed_text_top = round(height * 0.455)
+        available_height = 0
+        content_top = fixed_text_top
+        content_bottom = fixed_text_top
+    else:
+        name_max_width = width - round(120 * scale_x)
+        handle_max_width = width - round(130 * scale_x)
+        name_start_size = max(40, round(68 * scale * TEXT_SCALE_MULTIPLIER))
+        handle_start_size = max(28, round(50 * scale * TEXT_SCALE_MULTIPLIER))
+        name_min_size = max(28, round(34 * scale))
+        handle_min_size = max(22, round(30 * scale))
+        content_top = avatar_y + avatar_size + max(24, round(54 * scale_y))
+        content_bottom = round(820 * scale_y) - max(20, round(44 * scale_y))
+        text_line_gap = max(12, round(24 * scale_y))
+        available_height = max(0, content_bottom - content_top)
 
     fitted_name, name_font = _fit_text(
         draw,
@@ -275,11 +357,28 @@ def _render_profile_card_with_pillow(
             min_size=handle_min_size,
             bold=False,
         )
-        _, name_height = _measure_text(draw, fitted_name, name_font)
-        _, handle_height = _measure_text(draw, fitted_handle, handle_font)
+        name_width, name_height = _measure_text(draw, fitted_name, name_font)
+        handle_width, handle_height = _measure_text(draw, fitted_handle, handle_font)
 
     text_block_height = name_height + text_line_gap + handle_height
-    text_top = round(content_top + max(0, available_height - text_block_height) / 2)
+    if use_tier_theme_layout:
+        text_top = fixed_text_top
+    else:
+        text_top = round(content_top + max(0, available_height - text_block_height) / 2)
+
+    if use_tier_theme_layout:
+        _draw_tier_theme_backdrop(
+            canvas,
+            center_x,
+            avatar_y,
+            avatar_size,
+            text_top,
+            text_block_height,
+            width,
+            height,
+        )
+
+    canvas.alpha_composite(avatar, (avatar_x, avatar_y))
 
     _draw_centered_text(
         draw,
@@ -304,6 +403,7 @@ def _render_profile_card_with_pillow(
 
 def _render_profile_card_with_node(
     card_path: Path,
+    template_path: Path,
     display_name: str,
     username: str,
     avatar_path: str | None,
@@ -321,7 +421,7 @@ def _render_profile_card_with_node(
         node_bin,
         str(RENDERER_SCRIPT),
         "--template",
-        str(TEMPLATE_PATH),
+        str(template_path),
         "--output",
         str(card_path),
         "--display-name",
@@ -420,13 +520,15 @@ def ensure_profile_card(
     display_name: str,
     username: str,
     *,
+    card_tier: str | None = None,
     verified: bool = False,
     verified_type: str | None = None,
 ) -> str:
     _ensure_cache_dirs()
 
-    if not TEMPLATE_PATH.exists():
-        raise RuntimeError(f"Profile card template is missing: {TEMPLATE_PATH}")
+    template_path = _resolve_template_path(card_tier)
+    if not template_path.exists():
+        raise RuntimeError(f"Profile card template is missing: {template_path}")
 
     card_path = _card_path(discord_id)
     avatar_path = get_profile_avatar_path(discord_id)
@@ -437,6 +539,7 @@ def ensure_profile_card(
     try:
         _render_profile_card_with_node(
             card_path,
+            template_path,
             safe_display_name,
             safe_username,
             avatar_path,
@@ -448,7 +551,7 @@ def ensure_profile_card(
         render_errors.append(f"Node renderer failed: {exc}")
 
     try:
-        _render_profile_card_with_pillow(card_path, safe_display_name, safe_username, avatar_path)
+        _render_profile_card_with_pillow(card_path, template_path, safe_display_name, safe_username, avatar_path)
         return str(card_path)
     except Exception as exc:
         render_errors.append(f"Pillow fallback failed: {exc}")
