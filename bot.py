@@ -69,7 +69,7 @@ TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 # Role mentions for /super text
 SMALLER_IMPACT_ROLE_MENTION = "<@&1469347228777713918>"
 TOP_IMPACT_ROLE_MENTION = "<@&1473697234494292021>"
-MID_IMPACT_ROLE_TEXT = "@Signal Booster"
+MID_IMPACT_ROLE_TEXT = "<@&1489332520943358022>"
 
 # ============================================================
 # OCR Setup
