@@ -191,6 +191,7 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
       nameFill: '#ffffff',
       handleFill: '#ffffff',
       drawAvatarShadow: false,
+      showHandle: false,
     }
   }
 
@@ -216,12 +217,14 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
     nameFill: '#f8fafc',
     handleFill: '#f4f4f5',
     drawAvatarShadow: true,
+    showHandle: true,
   }
 }
 
 function resolveTextLayout(ctx, displayName, handleText, layout) {
   const nameFamily = layout.nameFamily || 'Mindo Sans Bold'
   const handleFamily = layout.handleFamily || 'Mindo Sans'
+  const showHandle = layout.showHandle !== false
   let { text: fittedName, size: nameSize } = fitText(
     ctx,
     displayName,
@@ -230,14 +233,18 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
     nameFamily,
     layout.nameMinSize,
   )
-  let { text: fittedHandle, size: handleSize } = fitText(
-    ctx,
-    handleText,
-    layout.handleMaxWidth,
-    layout.handleStartSize,
-    handleFamily,
-    layout.handleMinSize,
-  )
+  let fittedHandle = ''
+  let handleSize = layout.handleMinSize
+  if (showHandle) {
+    ;({ text: fittedHandle, size: handleSize } = fitText(
+      ctx,
+      handleText,
+      layout.handleMaxWidth,
+      layout.handleStartSize,
+      handleFamily,
+      layout.handleMinSize,
+    ))
+  }
 
   const contentTop = layout.textAlignBottom
     ? layout.textSafeTop
@@ -252,10 +259,16 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
   while (true) {
     ctx.font = `${nameFamily.includes('Bold') ? '700' : '400'} ${nameSize}px "${nameFamily}"`
     nameMetrics = getTextMetrics(ctx, fittedName)
-    ctx.font = `${handleFamily.includes('Bold') ? '700' : '400'} ${handleSize}px "${handleFamily}"`
-    handleMetrics = getTextMetrics(ctx, fittedHandle)
+    if (showHandle) {
+      ctx.font = `${handleFamily.includes('Bold') ? '700' : '400'} ${handleSize}px "${handleFamily}"`
+      handleMetrics = getTextMetrics(ctx, fittedHandle)
+    } else {
+      handleMetrics = { height: 0, width: 0, ascent: 0, descent: 0 }
+    }
 
-    const blockHeight = nameMetrics.height + layout.textLineGap + handleMetrics.height
+    const blockHeight = showHandle
+      ? nameMetrics.height + layout.textLineGap + handleMetrics.height
+      : nameMetrics.height
     if (
       blockHeight <= availableHeight ||
       (nameSize <= layout.nameMinSize && handleSize <= layout.handleMinSize)
@@ -267,15 +280,15 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
       const handleTop = nameTop + nameMetrics.height + layout.textLineGap
       return {
         fittedName,
-        fittedHandle,
+        fittedHandle: showHandle ? fittedHandle : '',
         nameSize,
-        handleSize,
+        handleSize: showHandle ? handleSize : 0,
         nameHeight: nameMetrics.height,
         nameWidth: nameMetrics.width,
-        handleHeight: handleMetrics.height,
-        handleWidth: handleMetrics.width,
+        handleHeight: showHandle ? handleMetrics.height : 0,
+        handleWidth: showHandle ? handleMetrics.width : 0,
         nameBaselineY: nameTop + Math.max(nameMetrics.ascent, 0),
-        handleBaselineY: handleTop + Math.max(handleMetrics.ascent, 0),
+        handleBaselineY: showHandle ? handleTop + Math.max(handleMetrics.ascent, 0) : 0,
         textTop: nameTop,
         textBlockHeight: blockHeight,
       }
@@ -292,7 +305,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
         layout.nameMinSize,
       ))
     }
-    if (handleSize > layout.handleMinSize) {
+    if (showHandle && handleSize > layout.handleMinSize) {
       handleSize -= 2
       ;({ text: fittedHandle, size: handleSize } = fitText(
         ctx,
@@ -394,9 +407,11 @@ async function main() {
   ctx.fillStyle = layout.nameFill || '#f8fafc'
   drawCenteredText(ctx, textLayout.fittedName, centerX, textLayout.nameBaselineY)
 
-  ctx.font = `${(layout.handleFamily || 'Mindo Sans').includes('Bold') ? '700' : '400'} ${textLayout.handleSize}px "${layout.handleFamily || 'Mindo Sans'}"`
-  ctx.fillStyle = layout.handleFill || '#f4f4f5'
-  drawCenteredText(ctx, textLayout.fittedHandle, centerX, textLayout.handleBaselineY)
+  if (layout.showHandle !== false && textLayout.fittedHandle) {
+    ctx.font = `${(layout.handleFamily || 'Mindo Sans').includes('Bold') ? '700' : '400'} ${textLayout.handleSize}px "${layout.handleFamily || 'Mindo Sans'}"`
+    ctx.fillStyle = layout.handleFill || '#f4f4f5'
+    drawCenteredText(ctx, textLayout.fittedHandle, centerX, textLayout.handleBaselineY)
+  }
 
   await mkdir(path.dirname(args.output), { recursive: true })
   const png = await canvas.encode('png')
