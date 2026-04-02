@@ -16,13 +16,12 @@ const TIER_TEMPLATE_HEIGHT = 1280
 const TIER_AVATAR_RING_SIZE = 389
 const TIER_AVATAR_SIZE = 354
 const TIER_AVATAR_RING_TOP = 218
-const TIER_BADGE_TOP = 1051
-const TIER_AVATAR_TEXT_GAP = 56
-const TIER_BADGE_TEXT_GAP = 82
+const TIER_TEXT_SAFE_TOP = 96
+const TIER_TEXT_TO_CIRCLE_GAP = 24
 const TIER_TEXT_SIZE = 64
 const TIER_TEXT_MIN_SIZE = 40
 const TIER_TEXT_LINE_GAP = 18
-const TIER_TEXT_MAX_WIDTH = 690
+const TIER_TEXT_MAX_WIDTH = 620
 
 function parseArgs(argv) {
   const parsed = {}
@@ -114,36 +113,33 @@ function registerFonts() {
   }
 }
 
-function fitFontSize(ctx, text, maxWidth, startingSize, family, minSize = 30) {
+function fitText(ctx, text, maxWidth, startingSize, family, minSize = 30) {
+  const cleanText = text.trim().replace(/\s+/g, ' ') || 'Unknown User'
   let size = startingSize
   while (size >= minSize) {
     ctx.font = `${family.includes('Bold') ? '700' : '400'} ${size}px "${family}"`
-    if (ctx.measureText(text).width <= maxWidth) {
-      return size
+    if (ctx.measureText(cleanText).width <= maxWidth) {
+      return { text: cleanText, size }
     }
     size -= 2
   }
-  return minSize
+
+  ctx.font = `${family.includes('Bold') ? '700' : '400'} ${minSize}px "${family}"`
+  let trimmed = cleanText
+  while (trimmed.length > 3) {
+    const candidate = `${trimmed.trimEnd()}...`
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      return { text: candidate, size: minSize }
+    }
+    trimmed = trimmed.slice(0, -1)
+  }
+
+  return { text: '...', size: minSize }
 }
 
 function drawCenteredText(ctx, text, centerX, topY) {
   const metrics = ctx.measureText(text)
   ctx.fillText(text, centerX - metrics.width / 2, topY)
-}
-
-function drawRoundedRect(ctx, x, y, width, height, radius) {
-  const safeRadius = Math.min(radius, width / 2, height / 2)
-  ctx.beginPath()
-  ctx.moveTo(x + safeRadius, y)
-  ctx.lineTo(x + width - safeRadius, y)
-  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius)
-  ctx.lineTo(x + width, y + height - safeRadius)
-  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height)
-  ctx.lineTo(x + safeRadius, y + height)
-  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius)
-  ctx.lineTo(x, y + safeRadius)
-  ctx.quadraticCurveTo(x, y, x + safeRadius, y)
-  ctx.closePath()
 }
 
 function getTextMetrics(ctx, text) {
@@ -178,12 +174,11 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
       scaleX: tierScaleX,
       scaleY: tierScaleY,
       scale: tierScale,
-      useFixedTextTop: false,
       avatarSize,
       avatarY: Math.round(avatarRingTop + (avatarRingSize - avatarSize) / 2),
-      badgeTop: Math.round(TIER_BADGE_TOP * tierScaleY),
-      avatarTextGap: Math.round(TIER_AVATAR_TEXT_GAP * tierScaleY),
-      badgeTextGap: Math.round(TIER_BADGE_TEXT_GAP * tierScaleY),
+      textSafeTop: Math.round(TIER_TEXT_SAFE_TOP * tierScaleY),
+      textBottom: avatarRingTop - Math.round(TIER_TEXT_TO_CIRCLE_GAP * tierScaleY),
+      textAlignBottom: true,
       textLineGap: Math.max(10, Math.round(TIER_TEXT_LINE_GAP * tierScaleY)),
       nameStartSize: Math.max(40, Math.round(TIER_TEXT_SIZE * tierScale)),
       nameMinSize: Math.max(28, Math.round(TIER_TEXT_MIN_SIZE * tierScale)),
@@ -203,13 +198,13 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
     scaleX,
     scaleY,
     scale,
-    useFixedTextTop: false,
     avatarSize: Math.max(132, Math.round(220 * scale)),
     avatarY: Math.round(228 * scaleY),
     badgeTop: Math.round(820 * scaleY),
     avatarTextGap: Math.max(24, Math.round(54 * scaleY)),
     textLineGap: Math.max(12, Math.round(24 * scaleY)),
     badgeTextGap: Math.max(20, Math.round(44 * scaleY)),
+    textAlignBottom: false,
     nameStartSize: Math.max(40, Math.round(68 * scale * TEXT_SCALE_MULTIPLIER)),
     nameMinSize: Math.max(28, Math.round(34 * scale)),
     handleStartSize: Math.max(28, Math.round(50 * scale * TEXT_SCALE_MULTIPLIER)),
@@ -227,7 +222,7 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
 function resolveTextLayout(ctx, displayName, handleText, layout) {
   const nameFamily = layout.nameFamily || 'Mindo Sans Bold'
   const handleFamily = layout.handleFamily || 'Mindo Sans'
-  let nameSize = fitFontSize(
+  let { text: fittedName, size: nameSize } = fitText(
     ctx,
     displayName,
     layout.nameMaxWidth,
@@ -235,7 +230,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
     nameFamily,
     layout.nameMinSize,
   )
-  let handleSize = fitFontSize(
+  let { text: fittedHandle, size: handleSize } = fitText(
     ctx,
     handleText,
     layout.handleMaxWidth,
@@ -244,33 +239,35 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
     layout.handleMinSize,
   )
 
-  const contentTop = layout.useFixedTextTop
-    ? layout.fixedTextTop
+  const contentTop = layout.textAlignBottom
+    ? layout.textSafeTop
     : layout.avatarY + layout.avatarSize + layout.avatarTextGap
-  const contentBottom = layout.useFixedTextTop
-    ? layout.fixedTextTop
+  const contentBottom = layout.textAlignBottom
+    ? layout.textBottom
     : layout.badgeTop - layout.badgeTextGap
-  const availableHeight = layout.useFixedTextTop ? 0 : Math.max(0, contentBottom - contentTop)
+  const availableHeight = Math.max(0, contentBottom - contentTop)
   let nameMetrics
   let handleMetrics
 
   while (true) {
     ctx.font = `${nameFamily.includes('Bold') ? '700' : '400'} ${nameSize}px "${nameFamily}"`
-    nameMetrics = getTextMetrics(ctx, displayName)
+    nameMetrics = getTextMetrics(ctx, fittedName)
     ctx.font = `${handleFamily.includes('Bold') ? '700' : '400'} ${handleSize}px "${handleFamily}"`
-    handleMetrics = getTextMetrics(ctx, handleText)
+    handleMetrics = getTextMetrics(ctx, fittedHandle)
 
     const blockHeight = nameMetrics.height + layout.textLineGap + handleMetrics.height
     if (
       blockHeight <= availableHeight ||
       (nameSize <= layout.nameMinSize && handleSize <= layout.handleMinSize)
     ) {
-      const extraSpace = layout.useFixedTextTop ? 0 : Math.max(0, availableHeight - blockHeight)
-      const nameTop = layout.useFixedTextTop
-        ? layout.fixedTextTop
+      const extraSpace = Math.max(0, availableHeight - blockHeight)
+      const nameTop = layout.textAlignBottom
+        ? Math.max(contentTop, contentBottom - blockHeight)
         : Math.round(contentTop + extraSpace / 2)
       const handleTop = nameTop + nameMetrics.height + layout.textLineGap
       return {
+        fittedName,
+        fittedHandle,
         nameSize,
         handleSize,
         nameHeight: nameMetrics.height,
@@ -286,9 +283,25 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
 
     if (nameSize > layout.nameMinSize) {
       nameSize -= 2
+      ;({ text: fittedName, size: nameSize } = fitText(
+        ctx,
+        displayName,
+        layout.nameMaxWidth,
+        nameSize,
+        nameFamily,
+        layout.nameMinSize,
+      ))
     }
     if (handleSize > layout.handleMinSize) {
       handleSize -= 2
+      ;({ text: fittedHandle, size: handleSize } = fitText(
+        ctx,
+        handleText,
+        layout.handleMaxWidth,
+        handleSize,
+        handleFamily,
+        layout.handleMinSize,
+      ))
     }
   }
 }
@@ -379,11 +392,11 @@ async function main() {
 
   ctx.font = `${(layout.nameFamily || 'Mindo Sans Bold').includes('Bold') ? '700' : '400'} ${textLayout.nameSize}px "${layout.nameFamily || 'Mindo Sans Bold'}"`
   ctx.fillStyle = layout.nameFill || '#f8fafc'
-  drawCenteredText(ctx, displayName, centerX, textLayout.nameBaselineY)
+  drawCenteredText(ctx, textLayout.fittedName, centerX, textLayout.nameBaselineY)
 
   ctx.font = `${(layout.handleFamily || 'Mindo Sans').includes('Bold') ? '700' : '400'} ${textLayout.handleSize}px "${layout.handleFamily || 'Mindo Sans'}"`
   ctx.fillStyle = layout.handleFill || '#f4f4f5'
-  drawCenteredText(ctx, handleText, centerX, textLayout.handleBaselineY)
+  drawCenteredText(ctx, textLayout.fittedHandle, centerX, textLayout.handleBaselineY)
 
   await mkdir(path.dirname(args.output), { recursive: true })
   const png = await canvas.encode('png')
