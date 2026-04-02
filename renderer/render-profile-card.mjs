@@ -11,6 +11,18 @@ const FONT_DIR = process.env.PROFILE_CARD_FONT_DIR
 const BASE_TEMPLATE_WIDTH = 850
 const BASE_TEMPLATE_HEIGHT = 1536
 const TEXT_SCALE_MULTIPLIER = 1
+const TIER_TEMPLATE_WIDTH = 853
+const TIER_TEMPLATE_HEIGHT = 1280
+const TIER_AVATAR_RING_SIZE = 389
+const TIER_AVATAR_SIZE = 354
+const TIER_AVATAR_RING_TOP = 218
+const TIER_BADGE_TOP = 1051
+const TIER_AVATAR_TEXT_GAP = 56
+const TIER_BADGE_TEXT_GAP = 82
+const TIER_TEXT_SIZE = 64
+const TIER_TEXT_MIN_SIZE = 40
+const TIER_TEXT_LINE_GAP = 18
+const TIER_TEXT_MAX_WIDTH = 690
 
 function parseArgs(argv) {
   const parsed = {}
@@ -54,7 +66,7 @@ function uniquePaths(paths) {
 function usesTierThemeLayout(templatePath) {
   const normalized = path.basename(templatePath).toLowerCase()
   return [
-    'mindoshare-social-card-bronze.jpg',
+    'mindoshare-social-card-bronze.png',
     'mindoshare-social-card-silver.png',
     'mindoshare-social-card-gold.png',
   ].includes(normalized)
@@ -155,21 +167,35 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
   const scale = Math.min(scaleX, scaleY)
 
   if (useTierThemeLayout) {
+    const tierScaleX = width / TIER_TEMPLATE_WIDTH
+    const tierScaleY = height / TIER_TEMPLATE_HEIGHT
+    const tierScale = Math.min(tierScaleX, tierScaleY)
+    const avatarRingSize = Math.round(TIER_AVATAR_RING_SIZE * tierScale)
+    const avatarSize = Math.round(TIER_AVATAR_SIZE * tierScale)
+    const avatarRingTop = Math.round(TIER_AVATAR_RING_TOP * tierScaleY)
+
     return {
-      scaleX,
-      scaleY,
-      scale,
-      useFixedTextTop: true,
-      fixedTextTop: Math.round(height * 0.455),
-      avatarSize: Math.max(132, Math.round(Math.min(width, height) * 0.17)),
-      avatarY: Math.round(height * 0.085),
-      textLineGap: Math.max(8, Math.round(height * 0.012)),
-      nameStartSize: Math.max(34, Math.round(width * 0.072)),
-      nameMinSize: Math.max(26, Math.round(width * 0.05)),
-      handleStartSize: Math.max(24, Math.round(width * 0.05)),
-      handleMinSize: Math.max(20, Math.round(width * 0.038)),
-      nameMaxWidth: Math.round(width * 0.78),
-      handleMaxWidth: Math.round(width * 0.78),
+      scaleX: tierScaleX,
+      scaleY: tierScaleY,
+      scale: tierScale,
+      useFixedTextTop: false,
+      avatarSize,
+      avatarY: Math.round(avatarRingTop + (avatarRingSize - avatarSize) / 2),
+      badgeTop: Math.round(TIER_BADGE_TOP * tierScaleY),
+      avatarTextGap: Math.round(TIER_AVATAR_TEXT_GAP * tierScaleY),
+      badgeTextGap: Math.round(TIER_BADGE_TEXT_GAP * tierScaleY),
+      textLineGap: Math.max(10, Math.round(TIER_TEXT_LINE_GAP * tierScaleY)),
+      nameStartSize: Math.max(40, Math.round(TIER_TEXT_SIZE * tierScale)),
+      nameMinSize: Math.max(28, Math.round(TIER_TEXT_MIN_SIZE * tierScale)),
+      handleStartSize: Math.max(40, Math.round(TIER_TEXT_SIZE * tierScale)),
+      handleMinSize: Math.max(28, Math.round(TIER_TEXT_MIN_SIZE * tierScale)),
+      nameMaxWidth: Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX),
+      handleMaxWidth: Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX),
+      nameFamily: 'Mindo Sans Bold',
+      handleFamily: 'Mindo Sans Bold',
+      nameFill: '#ffffff',
+      handleFill: '#ffffff',
+      drawAvatarShadow: false,
     }
   }
 
@@ -190,16 +216,23 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
     handleMinSize: Math.max(22, Math.round(30 * scale)),
     nameMaxWidth: width - Math.round(120 * scaleX),
     handleMaxWidth: width - Math.round(130 * scaleX),
+    nameFamily: 'Mindo Sans Bold',
+    handleFamily: 'Mindo Sans',
+    nameFill: '#f8fafc',
+    handleFill: '#f4f4f5',
+    drawAvatarShadow: true,
   }
 }
 
 function resolveTextLayout(ctx, displayName, handleText, layout) {
+  const nameFamily = layout.nameFamily || 'Mindo Sans Bold'
+  const handleFamily = layout.handleFamily || 'Mindo Sans'
   let nameSize = fitFontSize(
     ctx,
     displayName,
     layout.nameMaxWidth,
     layout.nameStartSize,
-    'Mindo Sans Bold',
+    nameFamily,
     layout.nameMinSize,
   )
   let handleSize = fitFontSize(
@@ -207,7 +240,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
     handleText,
     layout.handleMaxWidth,
     layout.handleStartSize,
-    'Mindo Sans',
+    handleFamily,
     layout.handleMinSize,
   )
 
@@ -222,9 +255,9 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
   let handleMetrics
 
   while (true) {
-    ctx.font = `700 ${nameSize}px "Mindo Sans Bold"`
+    ctx.font = `${nameFamily.includes('Bold') ? '700' : '400'} ${nameSize}px "${nameFamily}"`
     nameMetrics = getTextMetrics(ctx, displayName)
-    ctx.font = `400 ${handleSize}px "Mindo Sans"`
+    ctx.font = `${handleFamily.includes('Bold') ? '700' : '400'} ${handleSize}px "${handleFamily}"`
     handleMetrics = getTextMetrics(ctx, handleText)
 
     const blockHeight = nameMetrics.height + layout.textLineGap + handleMetrics.height
@@ -313,47 +346,18 @@ async function main() {
   const handleText = `@${username}`
   const textLayout = resolveTextLayout(ctx, displayName, handleText, layout)
 
-  if (layout.useFixedTextTop) {
-    const avatarCoverSize = avatarSize + Math.max(14, Math.round(Math.min(width, canvas.height) * 0.025))
+  if (layout.drawAvatarShadow) {
     ctx.save()
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.42)'
+    ctx.shadowBlur = Math.max(14, Math.round(24 * layout.scale))
+    ctx.shadowOffsetY = Math.max(6, Math.round(10 * layout.scale))
     ctx.beginPath()
-    ctx.arc(centerX, avatarY + avatarSize / 2, avatarCoverSize / 2, 0, Math.PI * 2)
+    ctx.arc(centerX, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
     ctx.closePath()
-    ctx.fillStyle = 'rgba(18, 22, 20, 0.92)'
-    ctx.fill()
-    ctx.restore()
-
-    const panelWidth = Math.round(width * 0.68)
-    const panelHeight = Math.max(
-      Math.round(canvas.height * 0.15),
-      textLayout.textBlockHeight + Math.round(canvas.height * 0.04),
-    )
-    const panelX = Math.round(centerX - panelWidth / 2)
-    const panelY = Math.round(textLayout.textTop - Math.round(canvas.height * 0.022))
-    ctx.save()
-    drawRoundedRect(
-      ctx,
-      panelX,
-      panelY,
-      panelWidth,
-      panelHeight,
-      Math.max(18, Math.round(width * 0.03)),
-    )
-    ctx.fillStyle = 'rgba(8, 10, 12, 0.92)'
+    ctx.fillStyle = '#062212'
     ctx.fill()
     ctx.restore()
   }
-
-  ctx.save()
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.42)'
-  ctx.shadowBlur = Math.max(14, Math.round(24 * layout.scale))
-  ctx.shadowOffsetY = Math.max(6, Math.round(10 * layout.scale))
-  ctx.beginPath()
-  ctx.arc(centerX, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-  ctx.closePath()
-  ctx.fillStyle = '#062212'
-  ctx.fill()
-  ctx.restore()
 
   ctx.save()
   ctx.beginPath()
@@ -373,12 +377,12 @@ async function main() {
   }
   ctx.restore()
 
-  ctx.font = `700 ${textLayout.nameSize}px "Mindo Sans Bold"`
-  ctx.fillStyle = '#f8fafc'
+  ctx.font = `${(layout.nameFamily || 'Mindo Sans Bold').includes('Bold') ? '700' : '400'} ${textLayout.nameSize}px "${layout.nameFamily || 'Mindo Sans Bold'}"`
+  ctx.fillStyle = layout.nameFill || '#f8fafc'
   drawCenteredText(ctx, displayName, centerX, textLayout.nameBaselineY)
 
-  ctx.font = `400 ${textLayout.handleSize}px "Mindo Sans"`
-  ctx.fillStyle = '#f4f4f5'
+  ctx.font = `${(layout.handleFamily || 'Mindo Sans').includes('Bold') ? '700' : '400'} ${textLayout.handleSize}px "${layout.handleFamily || 'Mindo Sans'}"`
+  ctx.fillStyle = layout.handleFill || '#f4f4f5'
   drawCenteredText(ctx, handleText, centerX, textLayout.handleBaselineY)
 
   await mkdir(path.dirname(args.output), { recursive: true })
