@@ -293,18 +293,23 @@ def _render_profile_card_with_pillow(
         bold=True,
     )
 
-    handle_text = f"@{(username or '').lstrip('@')}"
-    fitted_handle, handle_font = _fit_text(
-        draw,
-        handle_text,
-        handle_max_width,
-        size=handle_start_size,
-        min_size=handle_min_size,
-        bold=use_tier_theme_layout,
-    )
-
     _, name_height = _measure_text(draw, fitted_name, name_font)
-    _, handle_height = _measure_text(draw, fitted_handle, handle_font)
+    if use_tier_theme_layout:
+        handle_text = ""
+        fitted_handle = ""
+        handle_font = None
+        handle_height = 0
+    else:
+        handle_text = f"@{(username or '').lstrip('@')}"
+        fitted_handle, handle_font = _fit_text(
+            draw,
+            handle_text,
+            handle_max_width,
+            size=handle_start_size,
+            min_size=handle_min_size,
+            bold=False,
+        )
+        _, handle_height = _measure_text(draw, fitted_handle, handle_font)
 
     while (
         name_height + text_line_gap + handle_height > available_height
@@ -312,7 +317,7 @@ def _render_profile_card_with_pillow(
     ):
         if name_start_size > name_min_size:
             name_start_size -= 2
-        if handle_start_size > handle_min_size:
+        if not use_tier_theme_layout and handle_start_size > handle_min_size:
             handle_start_size -= 2
 
         fitted_name, name_font = _fit_text(
@@ -323,18 +328,19 @@ def _render_profile_card_with_pillow(
             min_size=name_min_size,
             bold=True,
         )
-        fitted_handle, handle_font = _fit_text(
-            draw,
-            handle_text,
-            handle_max_width,
-            size=handle_start_size,
-            min_size=handle_min_size,
-            bold=use_tier_theme_layout,
-        )
         _, name_height = _measure_text(draw, fitted_name, name_font)
-        _, handle_height = _measure_text(draw, fitted_handle, handle_font)
+        if not use_tier_theme_layout:
+            fitted_handle, handle_font = _fit_text(
+                draw,
+                handle_text,
+                handle_max_width,
+                size=handle_start_size,
+                min_size=handle_min_size,
+                bold=False,
+            )
+            _, handle_height = _measure_text(draw, fitted_handle, handle_font)
 
-    text_block_height = name_height + text_line_gap + handle_height
+    text_block_height = name_height if use_tier_theme_layout else name_height + text_line_gap + handle_height
     if use_tier_theme_layout:
         text_top = max(content_top, content_bottom - text_block_height)
     else:
@@ -351,14 +357,15 @@ def _render_profile_card_with_pillow(
         fill="#ffffff" if use_tier_theme_layout else "#f8fafc",
     )
 
-    _draw_centered_text(
-        draw,
-        fitted_handle,
-        center_x,
-        text_top + name_height + text_line_gap,
-        font=handle_font,
-        fill="#ffffff" if use_tier_theme_layout else "#f4f4f5",
-    )
+    if not use_tier_theme_layout and handle_font:
+        _draw_centered_text(
+            draw,
+            fitted_handle,
+            center_x,
+            text_top + name_height + text_line_gap,
+            font=handle_font,
+            fill="#f4f4f5",
+        )
 
     canvas.convert("RGB").save(card_path, format="PNG", optimize=True)
 
