@@ -33,13 +33,12 @@ TIER_TEMPLATE_HEIGHT = 1280
 TIER_AVATAR_RING_SIZE = 389
 TIER_AVATAR_SIZE = 354
 TIER_AVATAR_RING_TOP = 218
-TIER_BADGE_TOP = 1051
-TIER_AVATAR_TEXT_GAP = 56
-TIER_BADGE_TEXT_GAP = 82
+TIER_TEXT_SAFE_TOP = 96
+TIER_TEXT_TO_CIRCLE_GAP = 24
 TIER_TEXT_SIZE = 64
 TIER_TEXT_MIN_SIZE = 40
 TIER_TEXT_LINE_GAP = 18
-TIER_TEXT_MAX_WIDTH = 690
+TIER_TEXT_MAX_WIDTH = 620
 
 _AVATAR_DIR = PROFILE_CARD_CACHE_DIR / "avatars"
 _CARD_DIR = PROFILE_CARD_CACHE_DIR / "cards"
@@ -222,48 +221,6 @@ def _uses_tier_theme_layout(template_path: Path) -> bool:
     return any(path.name.lower() == normalized_name for path in PROFILE_CARD_TIER_TEMPLATE_PATHS.values())
 
 
-def _draw_tier_theme_backdrop(
-    canvas: Image.Image,
-    center_x: float,
-    avatar_y: int,
-    avatar_size: int,
-    text_top: int,
-    text_block_height: int,
-    width: int,
-    height: int,
-) -> None:
-    avatar_cover_size = avatar_size + max(14, round(min(width, height) * 0.025))
-    avatar_cover = Image.new("RGBA", (avatar_cover_size, avatar_cover_size), (0, 0, 0, 0))
-    cover_draw = ImageDraw.Draw(avatar_cover)
-    cover_draw.ellipse(
-        (0, 0, avatar_cover_size - 1, avatar_cover_size - 1),
-        fill=(18, 22, 20, 235),
-    )
-    avatar_cover = avatar_cover.filter(ImageFilter.GaussianBlur(radius=max(2, round(width * 0.004))))
-    canvas.alpha_composite(
-        avatar_cover,
-        (
-            round(center_x - avatar_cover_size / 2),
-            round(avatar_y - (avatar_cover_size - avatar_size) / 2),
-        ),
-    )
-
-    panel_width = round(width * 0.68)
-    panel_height = max(round(height * 0.15), text_block_height + round(height * 0.04))
-    panel_x = round(center_x - panel_width / 2)
-    panel_y = round(text_top - round(height * 0.022))
-    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
-    panel_draw = ImageDraw.Draw(panel)
-    radius = max(18, round(width * 0.03))
-    panel_draw.rounded_rectangle(
-        (0, 0, panel_width - 1, panel_height - 1),
-        radius=radius,
-        fill=(8, 10, 12, 235),
-    )
-    panel = panel.filter(ImageFilter.GaussianBlur(radius=max(1, round(width * 0.0025))))
-    canvas.alpha_composite(panel, (panel_x, panel_y))
-
-
 def _render_profile_card_with_pillow(
     card_path: Path,
     template_path: Path,
@@ -312,8 +269,8 @@ def _render_profile_card_with_pillow(
         name_min_size = max(28, round(TIER_TEXT_MIN_SIZE * tier_scale))
         handle_min_size = max(28, round(TIER_TEXT_MIN_SIZE * tier_scale))
         text_line_gap = max(10, round(TIER_TEXT_LINE_GAP * tier_scale_y))
-        content_top = avatar_ring_top + avatar_ring_size + round(TIER_AVATAR_TEXT_GAP * tier_scale_y)
-        content_bottom = round(TIER_BADGE_TOP * tier_scale_y) - round(TIER_BADGE_TEXT_GAP * tier_scale_y)
+        content_top = round(TIER_TEXT_SAFE_TOP * tier_scale_y)
+        content_bottom = avatar_ring_top - round(TIER_TEXT_TO_CIRCLE_GAP * tier_scale_y)
         available_height = max(0, content_bottom - content_top)
     else:
         name_max_width = width - round(120 * scale_x)
@@ -372,13 +329,16 @@ def _render_profile_card_with_pillow(
             handle_max_width,
             size=handle_start_size,
             min_size=handle_min_size,
-            bold=False,
+            bold=use_tier_theme_layout,
         )
-        name_width, name_height = _measure_text(draw, fitted_name, name_font)
-        handle_width, handle_height = _measure_text(draw, fitted_handle, handle_font)
+        _, name_height = _measure_text(draw, fitted_name, name_font)
+        _, handle_height = _measure_text(draw, fitted_handle, handle_font)
 
     text_block_height = name_height + text_line_gap + handle_height
-    text_top = round(content_top + max(0, available_height - text_block_height) / 2)
+    if use_tier_theme_layout:
+        text_top = max(content_top, content_bottom - text_block_height)
+    else:
+        text_top = round(content_top + max(0, available_height - text_block_height) / 2)
 
     canvas.alpha_composite(avatar, (avatar_x, avatar_y))
 
