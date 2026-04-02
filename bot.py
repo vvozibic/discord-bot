@@ -528,12 +528,78 @@ def extract_cookie_score(results):
     candidates.sort(key=lambda x: (x[0], x[1]))
     return candidates[0][2] if candidates else None
 
-def extract_handle(results):
-    for (bbox, text, prob) in results:
-        t = text.strip()
-        if t.startswith('@') and len(t) > 3:
-            return t.lstrip('@').strip().strip('.,;:!)]}(')
+HANDLE_PATTERN = re.compile(r'@([A-Za-z0-9_]{1,15})')
+HANDLE_BODY_PATTERN = re.compile(r'^[A-Za-z0-9_]{1,15}$')
+
+
+def _normalize_handle(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    clean = value.strip().strip("`'\".,;:!?)]}>").lstrip("@").strip("`'\".,;:!?)]}>").lower()
+    if HANDLE_BODY_PATTERN.fullmatch(clean or ""):
+        return clean
     return None
+
+
+def extract_handles(results) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+    tokens = []
+
+    def add_candidate(candidate: str | None) -> None:
+        normalized = _normalize_handle(candidate)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            candidates.append(normalized)
+
+    for (bbox, text, prob) in results:
+        token_text = (text or "").strip()
+        if not token_text:
+            continue
+
+        for match in HANDLE_PATTERN.findall(token_text):
+            add_candidate(match)
+
+        xs = [point[0] for point in bbox]
+        ys = [point[1] for point in bbox]
+        tokens.append(
+            {
+                "text": token_text,
+                "left": min(xs),
+                "right": max(xs),
+                "top": min(ys),
+                "bottom": max(ys),
+                "height": max(1, max(ys) - min(ys)),
+                "center_y": (min(ys) + max(ys)) / 2,
+            }
+        )
+
+    tokens.sort(key=lambda token: (token["top"], token["left"]))
+
+    for index, token in enumerate(tokens):
+        if token["text"].replace(" ", "") != "@":
+            continue
+
+        max_gap = max(40, round(token["height"] * 2.5))
+        for next_token in tokens[index + 1 : index + 4]:
+            if next_token["left"] < token["right"]:
+                continue
+
+            same_line_tolerance = max(token["height"], next_token["height"], 18)
+            if abs(next_token["center_y"] - token["center_y"]) > same_line_tolerance:
+                if next_token["center_y"] > token["center_y"]:
+                    break
+                continue
+
+            gap = next_token["left"] - token["right"]
+            if gap > max_gap:
+                break
+
+            add_candidate(next_token["text"])
+            break
+
+    return candidates
 
 # ============================================================
 # Result + Role mapping
@@ -739,9 +805,9 @@ class VerificationResultLayout(discord.ui.LayoutView):
 
         if result.handle_match_error:
             status_text = (
-                f"❌ **Identity Mismatch**\n"
+                f"❌ **Identity Check Failed**\n"
                 f"{result.handle_match_error}\n"
-                f"This screenshot does not belong to your linked account."
+                f"Verification requires a visible @handle that matches your linked X account."
             )
         elif result.detected_score:
             status_text = f"✅ **Verification Successful**\nFound **{result.project}** score!"
@@ -799,13 +865,13 @@ class VerificationResultLayout(discord.ui.LayoutView):
                 discord.ui.TextDisplay(f"**⚠️ Role assignment**\n{role_note}")
             )
 
-        if not result.detected_score:
+        if result.handle_match_error or not result.detected_score:
             retry_copy = (
                 f"Click {verify_mention} again and upload a clearer uncropped screenshot."
             )
             if result.handle_match_error:
                 retry_copy = (
-                    f"Click {verify_mention} again and upload a screenshot that matches your linked X account."
+                    f"Click {verify_mention} again and upload a screenshot that clearly shows your linked X handle."
                 )
 
             container.add_item(
@@ -1025,10 +1091,24 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
             )
 
         handle_error = None
-        img_handle = extract_handle(results)
-        required_handle = (x_link.get("x_username") or "").lower()
-        if img_handle and img_handle.lower() != required_handle:
-            handle_error = f"Found @{img_handle} in image, but your linked account is @{required_handle}"
+        required_handle = _normalize_handle(x_link.get("x_username") or "")
+        if score_val:
+            if not required_handle:
+                handle_error = "Your linked X account is missing a username. Please reconnect X and try again."
+            else:
+                detected_handles = extract_handles(results)
+                if required_handle not in detected_handles:
+                    if detected_handles:
+                        shown_handles = ", ".join(f"@{handle}" for handle in detected_handles[:3])
+                        if len(detected_handles) > 3:
+                            shown_handles += ", ..."
+                        handle_error = (
+                            f"Found {shown_handles} in image, but your linked account is @{required_handle}"
+                        )
+                    else:
+                        handle_error = (
+                            f"Could not detect your linked X handle @{required_handle} in the image."
+                        )
 
         result = VerificationResult(score_val, project, handle_match_error=handle_error)
 
