@@ -18,7 +18,7 @@ RENDERER_SCRIPT = Path(__file__).resolve().parent / "renderer" / "render-profile
 TEMPLATE_DIR = Path(__file__).resolve().parent / "renderer" / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "mindoshare-social-card.jpg"
 PROFILE_CARD_TIER_TEMPLATE_PATHS = {
-    "bronze": TEMPLATE_DIR / "mindoshare-social-card-bronze.jpg",
+    "bronze": TEMPLATE_DIR / "mindoshare-social-card-bronze.png",
     "silver": TEMPLATE_DIR / "mindoshare-social-card-silver.png",
     "gold": TEMPLATE_DIR / "mindoshare-social-card-gold.png",
 }
@@ -28,6 +28,18 @@ PROFILE_CARD_FONT_DIR = Path(
 BASE_TEMPLATE_WIDTH = 850
 BASE_TEMPLATE_HEIGHT = 1536
 TEXT_SCALE_MULTIPLIER = 1
+TIER_TEMPLATE_WIDTH = 853
+TIER_TEMPLATE_HEIGHT = 1280
+TIER_AVATAR_RING_SIZE = 389
+TIER_AVATAR_SIZE = 354
+TIER_AVATAR_RING_TOP = 218
+TIER_BADGE_TOP = 1051
+TIER_AVATAR_TEXT_GAP = 56
+TIER_BADGE_TEXT_GAP = 82
+TIER_TEXT_SIZE = 64
+TIER_TEXT_MIN_SIZE = 40
+TIER_TEXT_LINE_GAP = 18
+TIER_TEXT_MAX_WIDTH = 690
 
 _AVATAR_DIR = PROFILE_CARD_CACHE_DIR / "avatars"
 _CARD_DIR = PROFILE_CARD_CACHE_DIR / "cards"
@@ -270,34 +282,39 @@ def _render_profile_card_with_pillow(
     use_tier_theme_layout = _uses_tier_theme_layout(template_path)
 
     if use_tier_theme_layout:
-        avatar_size = max(132, round(min(width, height) * 0.17))
-        avatar_y = round(height * 0.085)
+        tier_scale_x = width / TIER_TEMPLATE_WIDTH
+        tier_scale_y = height / TIER_TEMPLATE_HEIGHT
+        tier_scale = min(tier_scale_x, tier_scale_y)
+        avatar_ring_size = round(TIER_AVATAR_RING_SIZE * tier_scale)
+        avatar_size = round(TIER_AVATAR_SIZE * tier_scale)
+        avatar_ring_top = round(TIER_AVATAR_RING_TOP * tier_scale_y)
+        avatar_y = round(avatar_ring_top + (avatar_ring_size - avatar_size) / 2)
     else:
         avatar_size = max(132, round(220 * scale))
         avatar_y = round(228 * scale_y)
     avatar_x = round(center_x - avatar_size / 2)
 
-    shadow = Image.new("RGBA", (avatar_size + 48, avatar_size + 48), (0, 0, 0, 0))
-    shadow_draw = ImageDraw.Draw(shadow)
-    shadow_draw.ellipse((20, 18, avatar_size + 20, avatar_size + 18), fill=(6, 34, 18, 148))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(8, round(16 * scale))))
-    canvas.alpha_composite(shadow, (avatar_x - 24, avatar_y - 8))
+    if not use_tier_theme_layout:
+        shadow = Image.new("RGBA", (avatar_size + 48, avatar_size + 48), (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow)
+        shadow_draw.ellipse((20, 18, avatar_size + 20, avatar_size + 18), fill=(6, 34, 18, 148))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(8, round(16 * scale))))
+        canvas.alpha_composite(shadow, (avatar_x - 24, avatar_y - 8))
 
     avatar = _build_avatar_image(avatar_path, display_name, username, avatar_size)
 
     draw = ImageDraw.Draw(canvas)
     if use_tier_theme_layout:
-        name_max_width = round(width * 0.78)
-        handle_max_width = round(width * 0.78)
-        name_start_size = max(34, round(width * 0.072))
-        handle_start_size = max(24, round(width * 0.05))
-        name_min_size = max(26, round(width * 0.05))
-        handle_min_size = max(20, round(width * 0.038))
-        text_line_gap = max(8, round(height * 0.012))
-        fixed_text_top = round(height * 0.455)
-        available_height = 0
-        content_top = fixed_text_top
-        content_bottom = fixed_text_top
+        name_max_width = round(TIER_TEXT_MAX_WIDTH * tier_scale_x)
+        handle_max_width = round(TIER_TEXT_MAX_WIDTH * tier_scale_x)
+        name_start_size = max(40, round(TIER_TEXT_SIZE * tier_scale))
+        handle_start_size = max(40, round(TIER_TEXT_SIZE * tier_scale))
+        name_min_size = max(28, round(TIER_TEXT_MIN_SIZE * tier_scale))
+        handle_min_size = max(28, round(TIER_TEXT_MIN_SIZE * tier_scale))
+        text_line_gap = max(10, round(TIER_TEXT_LINE_GAP * tier_scale_y))
+        content_top = avatar_ring_top + avatar_ring_size + round(TIER_AVATAR_TEXT_GAP * tier_scale_y)
+        content_bottom = round(TIER_BADGE_TOP * tier_scale_y) - round(TIER_BADGE_TEXT_GAP * tier_scale_y)
+        available_height = max(0, content_bottom - content_top)
     else:
         name_max_width = width - round(120 * scale_x)
         handle_max_width = width - round(130 * scale_x)
@@ -326,7 +343,7 @@ def _render_profile_card_with_pillow(
         handle_max_width,
         size=handle_start_size,
         min_size=handle_min_size,
-        bold=False,
+        bold=use_tier_theme_layout,
     )
 
     _, name_height = _measure_text(draw, fitted_name, name_font)
@@ -361,22 +378,7 @@ def _render_profile_card_with_pillow(
         handle_width, handle_height = _measure_text(draw, fitted_handle, handle_font)
 
     text_block_height = name_height + text_line_gap + handle_height
-    if use_tier_theme_layout:
-        text_top = fixed_text_top
-    else:
-        text_top = round(content_top + max(0, available_height - text_block_height) / 2)
-
-    if use_tier_theme_layout:
-        _draw_tier_theme_backdrop(
-            canvas,
-            center_x,
-            avatar_y,
-            avatar_size,
-            text_top,
-            text_block_height,
-            width,
-            height,
-        )
+    text_top = round(content_top + max(0, available_height - text_block_height) / 2)
 
     canvas.alpha_composite(avatar, (avatar_x, avatar_y))
 
@@ -386,7 +388,7 @@ def _render_profile_card_with_pillow(
         center_x,
         text_top,
         font=name_font,
-        fill="#f8fafc",
+        fill="#ffffff" if use_tier_theme_layout else "#f8fafc",
     )
 
     _draw_centered_text(
@@ -395,7 +397,7 @@ def _render_profile_card_with_pillow(
         center_x,
         text_top + name_height + text_line_gap,
         font=handle_font,
-        fill="#f4f4f5",
+        fill="#ffffff" if use_tier_theme_layout else "#f4f4f5",
     )
 
     canvas.convert("RGB").save(card_path, format="PNG", optimize=True)
