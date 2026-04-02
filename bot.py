@@ -844,14 +844,13 @@ class VerificationResultLayout(discord.ui.LayoutView):
 
         if x_link:
             x_user = x_link.get("x_username")
-            x_name = (x_link.get("x_name") or x_user or "").strip()
             x_handle = f"[@{x_user}](https://x.com/{x_user})"
             is_verified = bool(x_link.get("verified")) or (
                 str(x_link.get("verified_type") or "").lower() in {"blue", "business", "government"}
             )
             if is_verified:
                 x_handle += " ☑️"
-            details.append(f"**🔗 X Account**\n{x_name}\n{x_handle}")
+            details.append(f"**🔗 X Account**\n{x_handle}")
         else:
             details.append("**🔗 X Account**\n*Not Linked*")
 
