@@ -836,6 +836,7 @@ class VerificationResultLayout(discord.ui.LayoutView):
             discord.ui.TextDisplay(status_text)
         )
 
+        x_handle = None
         details = []
         if result.detected_score:
             details.append(f"**🎯 Score**\n`{result.detected_score}`")
@@ -850,9 +851,21 @@ class VerificationResultLayout(discord.ui.LayoutView):
             )
             if is_verified:
                 x_handle += " ☑️"
-            details.append(f"**🔗 X Account**\n{x_handle}")
+            if result.detected_score and not result.handle_match_error:
+                details.append(f"**🔗 X Account**\n{x_handle}")
         else:
             details.append("**🔗 X Account**\n*Not Linked*")
+
+        if x_handle and (result.handle_match_error or not result.detected_score):
+            container.add_item(
+                discord.ui.Separator(
+                    visible=False,
+                    spacing=discord.SeparatorSpacing.small,
+                )
+            )
+            container.add_item(
+                discord.ui.TextDisplay(x_handle)
+            )
 
         if details:
             container.add_item(
