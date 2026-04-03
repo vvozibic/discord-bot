@@ -856,6 +856,12 @@ class VerificationResultLayout(discord.ui.LayoutView):
 
         if details:
             container.add_item(
+                discord.ui.Separator(
+                    divider=False,
+                    spacing=discord.SeparatorSpacingSize.large,
+                )
+            )
+            container.add_item(
                 discord.ui.TextDisplay("\n\n".join(details))
             )
 
