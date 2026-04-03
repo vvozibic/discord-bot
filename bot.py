@@ -857,8 +857,8 @@ class VerificationResultLayout(discord.ui.LayoutView):
         if details:
             container.add_item(
                 discord.ui.Separator(
-                    divider=False,
-                    spacing=discord.SeparatorSpacingSize.large,
+                    visible=False,
+                    spacing=discord.SeparatorSpacing.large,
                 )
             )
             container.add_item(
