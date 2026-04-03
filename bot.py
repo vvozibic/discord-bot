@@ -70,6 +70,7 @@ TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
 SMALLER_IMPACT_ROLE_MENTION = "<@&1469347228777713918>"
 TOP_IMPACT_ROLE_MENTION = "<@&1473697234494292021>"
 MID_IMPACT_ROLE_TEXT = "<@&1489332520943358022>"
+FAILED_VERIFICATION_DISCORD_LINK = "https://discord.com/channels/1400787114333044887/1489676256541806824"
 
 # ============================================================
 # OCR Setup
@@ -862,6 +863,9 @@ class VerificationResultLayout(discord.ui.LayoutView):
                     visible=False,
                     spacing=discord.SeparatorSpacing.small,
                 )
+            )
+            container.add_item(
+                discord.ui.TextDisplay(FAILED_VERIFICATION_DISCORD_LINK)
             )
             container.add_item(
                 discord.ui.TextDisplay(x_handle)
