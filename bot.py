@@ -810,7 +810,7 @@ class VerificationResultLayout(discord.ui.LayoutView):
                 f"Verification requires a visible @handle that matches your linked X account."
             )
         elif result.detected_score:
-            status_text = f"✅ **Verification Successful**\nFound **{result.project}** score!"
+            status_text = f"✅ **Verification Successful**\nFound **{result.project}** score!\n\n"
         else:
             status_text = (
                 f"❌ **Verification Failed**\n"
@@ -866,7 +866,6 @@ class VerificationResultLayout(discord.ui.LayoutView):
             container.add_item(
                 discord.ui.TextDisplay(x_handle)
             )
-
         if details:
             container.add_item(
                 discord.ui.Separator(
