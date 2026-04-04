@@ -19,6 +19,7 @@ const TIER_AVATAR_RING_TOP = 218
 const TIER_TEXT_SAFE_TOP = 96
 const TIER_TEXT_TO_CIRCLE_GAP = 24
 const TIER_TEXT_SIZE = 64
+const TIER_TEXT_MAX_SIZE = 74
 const TIER_TEXT_MIN_SIZE = 40
 const TIER_TEXT_LINE_GAP = 18
 const TIER_TEXT_MAX_WIDTH = 620
@@ -113,9 +114,9 @@ function registerFonts() {
   }
 }
 
-function fitText(ctx, text, maxWidth, startingSize, family, minSize = 30) {
+function fitText(ctx, text, maxWidth, startingSize, family, minSize = 30, maxSize = startingSize) {
   const cleanText = text.trim().replace(/\s+/g, ' ') || 'Unknown User'
-  let size = startingSize
+  let size = Math.max(startingSize, maxSize)
   while (size >= minSize) {
     ctx.font = `${family.includes('Bold') ? '700' : '400'} ${size}px "${family}"`
     if (ctx.measureText(cleanText).width <= maxWidth) {
@@ -181,8 +182,10 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
       textAlignBottom: true,
       textLineGap: Math.max(10, Math.round(TIER_TEXT_LINE_GAP * tierScaleY)),
       nameStartSize: Math.max(40, Math.round(TIER_TEXT_SIZE * tierScale)),
+      nameMaxSize: Math.max(40, Math.round(TIER_TEXT_MAX_SIZE * tierScale)),
       nameMinSize: Math.max(28, Math.round(TIER_TEXT_MIN_SIZE * tierScale)),
       handleStartSize: Math.max(40, Math.round(TIER_TEXT_SIZE * tierScale)),
+      handleMaxSize: Math.max(40, Math.round(TIER_TEXT_MAX_SIZE * tierScale)),
       handleMinSize: Math.max(28, Math.round(TIER_TEXT_MIN_SIZE * tierScale)),
       nameMaxWidth: Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX),
       handleMaxWidth: Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX),
@@ -207,8 +210,10 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
     badgeTextGap: Math.max(20, Math.round(44 * scaleY)),
     textAlignBottom: false,
     nameStartSize: Math.max(40, Math.round(68 * scale * TEXT_SCALE_MULTIPLIER)),
+    nameMaxSize: Math.max(40, Math.round(68 * scale * TEXT_SCALE_MULTIPLIER * 1.08)),
     nameMinSize: Math.max(28, Math.round(34 * scale)),
     handleStartSize: Math.max(28, Math.round(50 * scale * TEXT_SCALE_MULTIPLIER)),
+    handleMaxSize: Math.max(28, Math.round(50 * scale * TEXT_SCALE_MULTIPLIER * 1.06)),
     handleMinSize: Math.max(22, Math.round(30 * scale)),
     nameMaxWidth: width - Math.round(120 * scaleX),
     handleMaxWidth: width - Math.round(130 * scaleX),
@@ -232,6 +237,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
     layout.nameStartSize,
     nameFamily,
     layout.nameMinSize,
+    layout.nameMaxSize ?? layout.nameStartSize,
   )
   let fittedHandle = ''
   let handleSize = layout.handleMinSize
@@ -243,6 +249,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
       layout.handleStartSize,
       handleFamily,
       layout.handleMinSize,
+      layout.handleMaxSize ?? layout.handleStartSize,
     ))
   }
 
@@ -303,6 +310,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
         nameSize,
         nameFamily,
         layout.nameMinSize,
+        nameSize,
       ))
     }
     if (showHandle && handleSize > layout.handleMinSize) {
@@ -314,6 +322,7 @@ function resolveTextLayout(ctx, displayName, handleText, layout) {
         handleSize,
         handleFamily,
         layout.handleMinSize,
+        handleSize,
       ))
     }
   }

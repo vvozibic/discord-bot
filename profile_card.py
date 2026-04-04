@@ -36,6 +36,7 @@ TIER_AVATAR_RING_TOP = 218
 TIER_TEXT_SAFE_TOP = 96
 TIER_TEXT_TO_CIRCLE_GAP = 24
 TIER_TEXT_SIZE = 64
+TIER_TEXT_MAX_SIZE = 74
 TIER_TEXT_MIN_SIZE = 40
 TIER_TEXT_LINE_GAP = 18
 TIER_TEXT_MAX_WIDTH = 620
@@ -122,16 +123,17 @@ def _fit_text(
     *,
     size: int,
     min_size: int,
+    max_size: int | None = None,
     bold: bool = False,
-) -> tuple[str, ImageFont.FreeTypeFont | ImageFont.ImageFont]:
+) -> tuple[str, ImageFont.FreeTypeFont | ImageFont.ImageFont, int]:
     clean_text = " ".join((text or "").split()) or "Unknown User"
-
-    for current_size in range(size, min_size - 1, -2):
+    upper_size = max(size, max_size or size)
+    for current_size in range(upper_size, min_size - 1, -2):
         font = _load_font(current_size, bold=bold)
         bbox = draw.textbbox((0, 0), clean_text, font=font)
         width = bbox[2] - bbox[0]
         if width <= max_width:
-            return clean_text, font
+            return clean_text, font, current_size
 
     font = _load_font(min_size, bold=bold)
     trimmed = clean_text
@@ -140,10 +142,10 @@ def _fit_text(
         bbox = draw.textbbox((0, 0), candidate, font=font)
         width = bbox[2] - bbox[0]
         if width <= max_width:
-            return candidate, font
+            return candidate, font, min_size
         trimmed = trimmed[:-1]
 
-    return "...", font
+    return "...", font, min_size
 
 
 def _initials(display_name: str, username: str) -> str:
@@ -265,7 +267,9 @@ def _render_profile_card_with_pillow(
         name_max_width = round(TIER_TEXT_MAX_WIDTH * tier_scale_x)
         handle_max_width = round(TIER_TEXT_MAX_WIDTH * tier_scale_x)
         name_start_size = max(40, round(TIER_TEXT_SIZE * tier_scale))
+        name_max_size = max(name_start_size, round(TIER_TEXT_MAX_SIZE * tier_scale))
         handle_start_size = max(40, round(TIER_TEXT_SIZE * tier_scale))
+        handle_max_size = max(handle_start_size, round(TIER_TEXT_MAX_SIZE * tier_scale))
         name_min_size = max(28, round(TIER_TEXT_MIN_SIZE * tier_scale))
         handle_min_size = max(28, round(TIER_TEXT_MIN_SIZE * tier_scale))
         text_line_gap = max(10, round(TIER_TEXT_LINE_GAP * tier_scale_y))
@@ -276,7 +280,9 @@ def _render_profile_card_with_pillow(
         name_max_width = width - round(120 * scale_x)
         handle_max_width = width - round(130 * scale_x)
         name_start_size = max(40, round(68 * scale * TEXT_SCALE_MULTIPLIER))
+        name_max_size = max(name_start_size, round(name_start_size * 1.08))
         handle_start_size = max(28, round(50 * scale * TEXT_SCALE_MULTIPLIER))
+        handle_max_size = max(handle_start_size, round(handle_start_size * 1.06))
         name_min_size = max(28, round(34 * scale))
         handle_min_size = max(22, round(30 * scale))
         content_top = avatar_y + avatar_size + max(24, round(54 * scale_y))
@@ -284,12 +290,13 @@ def _render_profile_card_with_pillow(
         text_line_gap = max(12, round(24 * scale_y))
         available_height = max(0, content_bottom - content_top)
 
-    fitted_name, name_font = _fit_text(
+    fitted_name, name_font, name_size = _fit_text(
         draw,
         display_name or username or "X User",
         name_max_width,
         size=name_start_size,
         min_size=name_min_size,
+        max_size=name_max_size,
         bold=True,
     )
 
@@ -299,43 +306,47 @@ def _render_profile_card_with_pillow(
         fitted_handle = ""
         handle_font = None
         handle_height = 0
+        handle_size = 0
     else:
         handle_text = f"@{(username or '').lstrip('@')}"
-        fitted_handle, handle_font = _fit_text(
+        fitted_handle, handle_font, handle_size = _fit_text(
             draw,
             handle_text,
             handle_max_width,
             size=handle_start_size,
             min_size=handle_min_size,
+            max_size=handle_max_size,
             bold=False,
         )
         _, handle_height = _measure_text(draw, fitted_handle, handle_font)
 
     while (
         name_height + text_line_gap + handle_height > available_height
-        and (name_start_size > name_min_size or handle_start_size > handle_min_size)
+        and (name_size > name_min_size or (not use_tier_theme_layout and handle_size > handle_min_size))
     ):
-        if name_start_size > name_min_size:
-            name_start_size -= 2
-        if not use_tier_theme_layout and handle_start_size > handle_min_size:
-            handle_start_size -= 2
+        if name_size > name_min_size:
+            name_size -= 2
+        if not use_tier_theme_layout and handle_size > handle_min_size:
+            handle_size -= 2
 
-        fitted_name, name_font = _fit_text(
+        fitted_name, name_font, name_size = _fit_text(
             draw,
             display_name or username or "X User",
             name_max_width,
-            size=name_start_size,
+            size=name_size,
             min_size=name_min_size,
+            max_size=name_size,
             bold=True,
         )
         _, name_height = _measure_text(draw, fitted_name, name_font)
         if not use_tier_theme_layout:
-            fitted_handle, handle_font = _fit_text(
+            fitted_handle, handle_font, handle_size = _fit_text(
                 draw,
                 handle_text,
                 handle_max_width,
-                size=handle_start_size,
+                size=handle_size,
                 min_size=handle_min_size,
+                max_size=handle_size,
                 bold=False,
             )
             _, handle_height = _measure_text(draw, fitted_handle, handle_font)
