@@ -64,12 +64,10 @@ OCR_BATCH_SIZE = int(getattr(config, "OCR_BATCH_SIZE", os.getenv("OCR_BATCH_SIZE
 OCR_WORKERS = int(getattr(config, "OCR_WORKERS", os.getenv("OCR_WORKERS", "0")) or 0)
 
 # Role tier names (fixed, only 3 roles)
-TIER_ROLE_NAMES = ["Signal Lite", "Signal Amplifier", "Top Signal"]
-
-# Role mentions for /super text
-SMALLER_IMPACT_ROLE_MENTION = "<@&1469347228777713918>"
-TOP_IMPACT_ROLE_MENTION = "<@&1473697234494292021>"
-MID_IMPACT_ROLE_TEXT = "<@&1489332520943358022>"
+BRONZE_CARD_ROLE_NAME = "Bronze card"
+SILVER_CARD_ROLE_NAME = "Silver card"
+GOLD_CARD_ROLE_NAME = "Gold card"
+TIER_ROLE_NAMES = [BRONZE_CARD_ROLE_NAME, SILVER_CARD_ROLE_NAME, GOLD_CARD_ROLE_NAME]
 VERIFICATION_DISCORD_LINK = "https://discord.com/channels/1400787114333044887/1489676256541806824"
 
 # ============================================================
@@ -618,35 +616,35 @@ class VerificationResult:
 
                 if project == "Kaito":
                     if 50 < val < 200:
-                        self.role_name = "Signal Lite"
+                        self.role_name = BRONZE_CARD_ROLE_NAME
                     elif 200 <= val < 1000:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = SILVER_CARD_ROLE_NAME
                     elif val >= 1000:
-                        self.role_name = "Top Signal"
+                        self.role_name = GOLD_CARD_ROLE_NAME
 
                 elif project == "Wallchain":
                     if 10 < val <= 75:
-                        self.role_name = "Signal Lite"
+                        self.role_name = BRONZE_CARD_ROLE_NAME
                     elif 76 <= val <= 400:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = SILVER_CARD_ROLE_NAME
                     elif val >= 401:
-                        self.role_name = "Top Signal"
+                        self.role_name = GOLD_CARD_ROLE_NAME
 
                 elif project == "Cookie":
                     if 10 <= val <= 200:
-                        self.role_name = "Signal Lite"
+                        self.role_name = BRONZE_CARD_ROLE_NAME
                     elif 201 <= val <= 400:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = SILVER_CARD_ROLE_NAME
                     elif val >= 401:
-                        self.role_name = "Top Signal"
+                        self.role_name = GOLD_CARD_ROLE_NAME
 
                 elif project == "Xeet":
                     if 100 <= val <= 300:
-                        self.role_name = "Signal Lite"
+                        self.role_name = BRONZE_CARD_ROLE_NAME
                     elif 301 <= val < 1100:
-                        self.role_name = "Signal Amplifier"
+                        self.role_name = SILVER_CARD_ROLE_NAME
                     elif val >= 1100:
-                        self.role_name = "Top Signal"
+                        self.role_name = GOLD_CARD_ROLE_NAME
 
                 else:
                     self.role_name = None
@@ -658,11 +656,11 @@ def resolve_profile_card_tier(result: VerificationResult) -> str | None:
     if result.handle_match_error or not result.detected_score:
         return None
 
-    if result.role_name == "Signal Lite":
+    if result.role_name == BRONZE_CARD_ROLE_NAME:
         return "bronze"
-    if result.role_name == "Signal Amplifier":
+    if result.role_name == SILVER_CARD_ROLE_NAME:
         return "silver"
-    if result.role_name == "Top Signal":
+    if result.role_name == GOLD_CARD_ROLE_NAME:
         return "gold"
     return "bronze"
 
@@ -782,9 +780,9 @@ class SuperCampaignLayout(discord.ui.LayoutView):
         container.add_item(
             discord.ui.TextDisplay(
                 "**3.** Obtain one of 3 roles based on your previous KOL achievements\n\n"
-                f"{SMALLER_IMPACT_ROLE_MENTION} - for smaller impact on X space\n"
-                f"{MID_IMPACT_ROLE_TEXT} - for mid impact\n"
-                f"{TOP_IMPACT_ROLE_MENTION} - for the top impact"
+                f"{BRONZE_CARD_ROLE_NAME} - for smaller impact on X space\n"
+                f"{SILVER_CARD_ROLE_NAME} - for mid impact\n"
+                f"{GOLD_CARD_ROLE_NAME} - for the top impact"
             )
         )
 
