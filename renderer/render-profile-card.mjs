@@ -23,6 +23,8 @@ const TIER_TEXT_MAX_SIZE = 74
 const TIER_TEXT_MIN_SIZE = 40
 const TIER_TEXT_LINE_GAP = 18
 const TIER_TEXT_MAX_WIDTH = 620
+const TIER_TEXT_SAFE_LEFT = 150
+const TIER_TEXT_SAFE_RIGHT = 110
 
 function parseArgs(argv) {
   const parsed = {}
@@ -170,6 +172,12 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
     const avatarRingSize = Math.round(TIER_AVATAR_RING_SIZE * tierScale)
     const avatarSize = Math.round(TIER_AVATAR_SIZE * tierScale)
     const avatarRingTop = Math.round(TIER_AVATAR_RING_TOP * tierScaleY)
+    const centerX = width / 2
+    const safeLeft = Math.round(TIER_TEXT_SAFE_LEFT * tierScaleX)
+    const safeRight = width - Math.round(TIER_TEXT_SAFE_RIGHT * tierScaleX)
+    const barrierMaxWidth = Math.round(2 * Math.min(centerX - safeLeft, safeRight - centerX))
+    const tierMaxWidth = Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX)
+    const constrainedMaxWidth = Math.max(220, Math.min(tierMaxWidth, barrierMaxWidth))
 
     return {
       scaleX: tierScaleX,
@@ -187,8 +195,8 @@ function getLayoutMetrics(width, height, useTierThemeLayout = false) {
       handleStartSize: Math.max(40, Math.round(TIER_TEXT_SIZE * tierScale)),
       handleMaxSize: Math.max(40, Math.round(TIER_TEXT_MAX_SIZE * tierScale)),
       handleMinSize: Math.max(28, Math.round(TIER_TEXT_MIN_SIZE * tierScale)),
-      nameMaxWidth: Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX),
-      handleMaxWidth: Math.round(TIER_TEXT_MAX_WIDTH * tierScaleX),
+      nameMaxWidth: constrainedMaxWidth,
+      handleMaxWidth: constrainedMaxWidth,
       nameFamily: 'Mindo Sans Bold',
       handleFamily: 'Mindo Sans Bold',
       nameFill: '#ffffff',

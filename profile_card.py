@@ -40,6 +40,8 @@ TIER_TEXT_MAX_SIZE = 74
 TIER_TEXT_MIN_SIZE = 40
 TIER_TEXT_LINE_GAP = 18
 TIER_TEXT_MAX_WIDTH = 620
+TIER_TEXT_SAFE_LEFT = 150
+TIER_TEXT_SAFE_RIGHT = 110
 
 _AVATAR_DIR = PROFILE_CARD_CACHE_DIR / "avatars"
 _CARD_DIR = PROFILE_CARD_CACHE_DIR / "cards"
@@ -266,6 +268,13 @@ def _render_profile_card_with_pillow(
     if use_tier_theme_layout:
         name_max_width = round(TIER_TEXT_MAX_WIDTH * tier_scale_x)
         handle_max_width = round(TIER_TEXT_MAX_WIDTH * tier_scale_x)
+        safe_left = round(TIER_TEXT_SAFE_LEFT * tier_scale_x)
+        safe_right = width - round(TIER_TEXT_SAFE_RIGHT * tier_scale_x)
+        barrier_max_width = round(
+            2 * min(center_x - safe_left, safe_right - center_x)
+        )
+        name_max_width = max(220, min(name_max_width, barrier_max_width))
+        handle_max_width = max(220, min(handle_max_width, barrier_max_width))
         name_start_size = max(40, round(TIER_TEXT_SIZE * tier_scale))
         name_max_size = max(name_start_size, round(TIER_TEXT_MAX_SIZE * tier_scale))
         handle_start_size = max(40, round(TIER_TEXT_SIZE * tier_scale))
