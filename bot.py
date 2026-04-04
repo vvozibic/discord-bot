@@ -780,9 +780,9 @@ class SuperCampaignLayout(discord.ui.LayoutView):
         container.add_item(
             discord.ui.TextDisplay(
                 "**3.** Obtain one of 3 roles based on your previous KOL achievements\n\n"
-                f"{BRONZE_CARD_ROLE_NAME} - for smaller impact on X space\n"
-                f"{SILVER_CARD_ROLE_NAME} - for mid impact\n"
-                f"{GOLD_CARD_ROLE_NAME} - for the top impact"
+                f"<@&1489932156938489957> - for smaller impact on X space\n"
+                f"<@&1489932159295688855> - for mid impact\n"
+                f"<@&1489932161002766447> - for the top impact"
             )
         )
 
