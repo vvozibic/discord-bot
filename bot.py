@@ -68,6 +68,7 @@ BRONZE_CARD_ROLE_NAME = "Bronze card"
 SILVER_CARD_ROLE_NAME = "Silver card"
 GOLD_CARD_ROLE_NAME = "Gold card"
 TIER_ROLE_NAMES = [BRONZE_CARD_ROLE_NAME, SILVER_CARD_ROLE_NAME, GOLD_CARD_ROLE_NAME]
+VERIFICATION_DISCORD_LINK = "https://discord.com/channels/1400787114333044887/1489676256541806824"
 
 # ============================================================
 # OCR Setup
@@ -772,7 +773,7 @@ class SuperCampaignLayout(discord.ui.LayoutView):
         container.add_item(
             discord.ui.TextDisplay(
                 f"**2.** After that click {verify_mention} and attach image with your previous score "
-                "from **Kaito, Wallchain, Cookie, Xeet**"
+                f"from **Kaito, Wallchain, Cookie, Xeet** ({VERIFICATION_DISCORD_LINK})"
             )
         )
 
@@ -860,6 +861,9 @@ class VerificationResultLayout(discord.ui.LayoutView):
                     visible=False,
                     spacing=discord.SeparatorSpacing.small,
                 )
+            )
+            container.add_item(
+                discord.ui.TextDisplay(VERIFICATION_DISCORD_LINK)
             )
             container.add_item(
                 discord.ui.TextDisplay(x_handle)
