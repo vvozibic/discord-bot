@@ -741,7 +741,7 @@ class XLinkLayout(discord.ui.LayoutView):
 
         self.add_item(container)
 
-class MindoCampaignLayout(discord.ui.LayoutView):
+class GetMyCardCampaignLayout(discord.ui.LayoutView):
     def __init__(self, link: str, verify_mention: str):
         super().__init__(timeout=LINK_TTL)
 
@@ -924,9 +924,9 @@ def build_link_layout(link: str) -> discord.ui.LayoutView:
     verify_mention = slash_cmd_mention("verify")
     return XLinkLayout(link, verify_mention)
 
-def build_mindo_layout(link: str) -> discord.ui.LayoutView:
+def build_getmycard_layout(link: str) -> discord.ui.LayoutView:
     verify_mention = slash_cmd_mention("verify")
-    return MindoCampaignLayout(link, verify_mention)
+    return GetMyCardCampaignLayout(link, verify_mention)
 
 def build_result_layout(
     member: discord.Member,
@@ -1001,14 +1001,14 @@ async def xlink_cmd(interaction: discord.Interaction):
         ephemeral=True,
     )
 
-@tree.command(name="mindo", description="Show campaign onboarding steps")
-async def mindo_cmd(interaction: discord.Interaction):
+@tree.command(name="getmycard", description="Show campaign onboarding steps")
+async def getmycard_cmd(interaction: discord.Interaction):
     if not interaction.user:
         return
 
     await database.upsert_user_identity(str(interaction.user.id), str(interaction.user))
     link = await create_signed_start_link(str(interaction.user.id))
-    layout = build_mindo_layout(link)
+    layout = build_getmycard_layout(link)
 
     await interaction.response.send_message(
         view=layout,
@@ -1021,7 +1021,7 @@ async def xstatus_cmd(interaction: discord.Interaction):
     obj = await link_get(str(interaction.user.id))
     if not obj:
         await interaction.response.send_message(
-            "You have not linked X yet. Use `/mindo` and press **Connect X Account**.",
+            "You have not linked X yet. Use `/getmycard` and press **Connect X Account**.",
             ephemeral=True,
         )
         return
