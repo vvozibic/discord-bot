@@ -211,7 +211,7 @@ def get_success_html(username):
                 padding: 0;
                 font-family: 'Inter', sans-serif;
                 background: radial-gradient(circle at top left, #1a2a6c, #b21f1f00),
-                            radial-gradient(circle at bottom right, #fdbb2d, #1a2a6c);
+                            radial-gradient(circle at bottom right, #86efac, #1a2a6c);
                 background-color: #0f172a;
                 height: 100vh;
                 display: flex;
