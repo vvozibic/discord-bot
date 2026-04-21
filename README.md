@@ -41,3 +41,4 @@ npm run dev
 
 - The worker is stubbed and returns deterministic fake results based on the user ID + link. Replace the stub worker with your real job processor when ready.
 - The bot role must be above the target roles in the Discord role hierarchy to assign them.
+- PostgreSQL deployment variable is `DATABASE_URL`. See `POSTGRES_HANDOFF.md` for exact setup and verification steps.
