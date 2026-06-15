@@ -70,6 +70,15 @@ GOLD_CARD_ROLE_NAME = "Gold card"
 TIER_ROLE_NAMES = [BRONZE_CARD_ROLE_NAME, SILVER_CARD_ROLE_NAME, GOLD_CARD_ROLE_NAME]
 VERIFICATION_DISCORD_LINK = "https://discord.com/channels/1400787114333044887/1489676256541806824/1491513812048678953"
 
+# Tria animation asset rendered from assets/tria-tree-grow-animated.svg.
+TRIA_ANIMATION_FILE_NAME = "tria-level.gif"
+TRIA_ANIMATION_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "assets",
+    "tria-tree-grow.gif",
+)
+TRIA_ANIMATION_COLOR = 0xFFFFFF
+
 # ============================================================
 # OCR Setup
 # ============================================================
@@ -701,6 +710,19 @@ def _result_color(result: VerificationResult) -> int:
         return 0x57F287
     return 0xED4245
 
+def _display_name(user) -> str:
+    return getattr(user, "display_name", None) or getattr(user, "name", "Member")
+
+def build_tria_level_embed(member_name: str, level: int) -> discord.Embed:
+    embed = discord.Embed(
+        color=TRIA_ANIMATION_COLOR,
+        title=f"{member_name} reached Level {level}",
+        description="Tria tree form unlocked.",
+    )
+    embed.set_image(url=f"attachment://{TRIA_ANIMATION_FILE_NAME}")
+    embed.set_footer(text="Tria")
+    return embed
+
 class XLinkLayout(discord.ui.LayoutView):
     def __init__(self, link: str, verify_mention: str):
         super().__init__(timeout=LINK_TTL)
@@ -1013,6 +1035,39 @@ async def getmycard_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(
         view=layout,
         ephemeral=True,
+    )
+
+@tree.command(name="trialevel", description="Post the Tria tree level animation")
+@discord.app_commands.describe(
+    level="Level number to display",
+    member="Member to feature in the animation message",
+)
+async def trialevel_cmd(
+    interaction: discord.Interaction,
+    level: int = 10,
+    member: discord.Member | None = None,
+):
+    if level < 1:
+        await interaction.response.send_message(
+            "Level must be 1 or higher.",
+            ephemeral=True,
+        )
+        return
+
+    if not os.path.exists(TRIA_ANIMATION_PATH):
+        await interaction.response.send_message(
+            "The Tria animation asset is missing. Expected `assets/tria-tree-grow.gif`.",
+            ephemeral=True,
+        )
+        return
+
+    target = member or interaction.user
+    embed = build_tria_level_embed(_display_name(target), level)
+    file = discord.File(TRIA_ANIMATION_PATH, filename=TRIA_ANIMATION_FILE_NAME)
+
+    await interaction.response.send_message(
+        embed=embed,
+        file=file,
     )
 
 @tree.command(name="xstatus", description="Show your linked X account status")

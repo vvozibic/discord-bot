@@ -1,0 +1,132 @@
+<svg width="2048" height="2048" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Tria tree grow animation</title>
+  <desc id="desc">Animated vector version of the Tria logo growing from a stem into branches.</desc>
+
+  <style>
+    :root {
+      --ease: cubic-bezier(.18,.84,.2,1);
+    }
+
+    #tile {
+      transform-origin: 256px 256px;
+      animation: tile-arrive 2800ms var(--ease) infinite;
+    }
+
+    .growth-line {
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      opacity: 0;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #sprout-stem { animation: draw-stem 3200ms var(--ease) infinite; }
+    #sprout-lower { animation: draw-lower 3200ms var(--ease) infinite; }
+    #sprout-right { animation: draw-right 3200ms var(--ease) infinite; }
+    #sprout-top { animation: draw-top 3200ms var(--ease) infinite; }
+
+    .logo-piece {
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    #stem-piece {
+      transform-origin: 242px 452px;
+      animation: bloom-stem 3200ms var(--ease) infinite;
+    }
+
+    #lower-left-piece {
+      transform-origin: 278px 327px;
+      animation: bloom-lower 3200ms var(--ease) infinite;
+    }
+
+    #right-piece {
+      transform-origin: 280px 238px;
+      animation: bloom-right 3200ms var(--ease) infinite;
+    }
+
+    #top-left-piece {
+      transform-origin: 278px 195px;
+      animation: bloom-top 3200ms var(--ease) infinite;
+    }
+
+    @keyframes tile-arrive {
+      0% { opacity: 0; transform: scale(.93); }
+      8%, 86% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(.98); }
+    }
+
+    @keyframes draw-stem {
+      0%, 5% { opacity: 0; stroke-dashoffset: 1; }
+      10% { opacity: .42; }
+      24%, 58% { opacity: .42; stroke-dashoffset: 0; }
+      72%, 100% { opacity: 0; stroke-dashoffset: 0; }
+    }
+
+    @keyframes draw-lower {
+      0%, 16% { opacity: 0; stroke-dashoffset: 1; }
+      21% { opacity: .42; }
+      38%, 62% { opacity: .42; stroke-dashoffset: 0; }
+      75%, 100% { opacity: 0; stroke-dashoffset: 0; }
+    }
+
+    @keyframes draw-right {
+      0%, 27% { opacity: 0; stroke-dashoffset: 1; }
+      32% { opacity: .42; }
+      48%, 66% { opacity: .42; stroke-dashoffset: 0; }
+      78%, 100% { opacity: 0; stroke-dashoffset: 0; }
+    }
+
+    @keyframes draw-top {
+      0%, 36% { opacity: 0; stroke-dashoffset: 1; }
+      41% { opacity: .42; }
+      56%, 70% { opacity: .42; stroke-dashoffset: 0; }
+      82%, 100% { opacity: 0; stroke-dashoffset: 0; }
+    }
+
+    @keyframes bloom-stem {
+      0%, 16% { opacity: 0; transform: scale(.58); }
+      30%, 86% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1); }
+    }
+
+    @keyframes bloom-lower {
+      0%, 28% { opacity: 0; transform: scale(.58); }
+      42%, 86% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1); }
+    }
+
+    @keyframes bloom-right {
+      0%, 39% { opacity: 0; transform: scale(.58); }
+      53%, 86% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1); }
+    }
+
+    @keyframes bloom-top {
+      0%, 48% { opacity: 0; transform: scale(.58); }
+      62%, 86% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1); }
+    }
+  </style>
+
+  <rect id="tile" width="512" height="512" rx="94" fill="#050505"/>
+
+  <g id="growth-skeleton" pathLength="1">
+    <path id="sprout-stem" class="growth-line" pathLength="1" d="M241 444C240 412 241 381 243 349C244 335 254 329 279.5 327.4"/>
+    <path id="sprout-lower" class="growth-line" pathLength="1" d="M279.5 327.4C251 319 217 306 176 290C151 280 135 262 132 235"/>
+    <path id="sprout-right" class="growth-line" pathLength="1" d="M279.5 244C318 228 363 210 408 191"/>
+    <path id="sprout-top" class="growth-line" pathLength="1" d="M279.5 195C238 178 191 160 147 142C133 136 128 113 132 82"/>
+  </g>
+
+  <g id="tria-mark" fill="#fff" shape-rendering="geometricPrecision">
+    <path id="top-left-piece" class="logo-piece" d="M141.5 64C133.4 64 127 70.7 127 80.2V125.7C127 139.1 135.1 150.8 147.5 155.9L267.8 203.2C273.6 205.5 279.5 201.2 279.5 194.9V120.2C279.5 114.8 276.1 110.2 271 108.5L151.2 66.5C148.2 64.9 144.7 64 141.5 64Z"/>
+    <path id="right-piece" class="logo-piece" d="M279.5 194.8L403.1 148.3C412.3 144.8 419.5 150.2 419.5 160.1V199.9C419.5 213.8 411.5 224.8 398.7 230.3L279.5 281.8V194.8Z"/>
+    <path id="lower-left-piece" class="logo-piece" d="M140.7 218C132.7 218 127 224.5 127 233.6V263.7C127 276.9 134.7 288.4 146.9 293.3L263.2 338.1C270.8 341 279.5 335.5 279.5 327.4V274C279.5 268.8 276.2 264.2 271.4 262.4L150.4 220.4C147.3 218.9 143.9 218 140.7 218Z"/>
+    <path id="stem-piece" class="logo-piece" d="M202.5 319.5C202.5 314.2 207.5 310.3 212.6 311.8L270.7 328.7C273.8 329.6 276.9 329.1 279.5 327.4V414.6C279.5 421.4 275.3 427.3 269 429.8L213.8 451.3C208.1 453.5 202.5 449.3 202.5 443.2V319.5Z"/>
+  </g>
+</svg>
