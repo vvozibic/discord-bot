@@ -79,6 +79,92 @@ TRIA_ANIMATION_PATH = os.path.join(
 )
 TRIA_ANIMATION_COLOR = 0xFFFFFF
 
+FAQ_COLOR = 0x22D3EE
+FAQ_COPYRIGHT = "(c) 2025 Tria. All rights reserved."
+FAQ_ANSWERS = {
+    "tria_card_what_is": {
+        "label": "What is Tria Card?",
+        "answer": (
+            "**What is Tria Card?**\n"
+            "Tria Card is a membership-style card experience for Tria community campaigns, rewards, and status."
+        ),
+    },
+    "tria_card_get": {
+        "label": "How do I get a Tria Card?",
+        "answer": (
+            "**How do I get a Tria Card?**\n"
+            "Use `/getmycard`, connect your X account, then complete the verification flow requested by the bot."
+        ),
+    },
+    "tria_card_tiers": {
+        "label": "What card tiers exist?",
+        "answer": (
+            "**What card tiers exist?**\n"
+            "The current verification flow can assign Bronze, Silver, or Gold card roles based on eligible score data."
+        ),
+    },
+    "membership_benefits": {
+        "label": "What are membership benefits?",
+        "answer": (
+            "**What are membership benefits?**\n"
+            "Membership benefits can include campaign access, role recognition, and future Tria community perks."
+        ),
+    },
+    "membership_roles": {
+        "label": "How are roles assigned?",
+        "answer": (
+            "**How are roles assigned?**\n"
+            "The bot checks your linked X account and verification screenshot, then assigns the matching card role."
+        ),
+    },
+    "membership_update": {
+        "label": "Can my membership change?",
+        "answer": (
+            "**Can my membership change?**\n"
+            "Yes. Run verification again when your eligible score or campaign status changes."
+        ),
+    },
+    "cashback_eligible": {
+        "label": "Who is eligible for cashback?",
+        "answer": (
+            "**Who is eligible for cashback?**\n"
+            "Cashback eligibility depends on the active campaign rules announced by the Tria team."
+        ),
+    },
+    "cashback_claim": {
+        "label": "How do I claim cashback?",
+        "answer": (
+            "**How do I claim cashback?**\n"
+            "Follow the active campaign instructions in Discord. If a claim flow is open, the team will announce it."
+        ),
+    },
+    "cashback_timing": {
+        "label": "When is cashback paid?",
+        "answer": (
+            "**When is cashback paid?**\n"
+            "Payment timing depends on campaign review and distribution schedules shared by the Tria team."
+        ),
+    },
+}
+
+FAQ_CATEGORIES = [
+    {
+        "placeholder": "Tria Card FAQs",
+        "custom_id": "tria_faq_card_select",
+        "values": ["tria_card_what_is", "tria_card_get", "tria_card_tiers"],
+    },
+    {
+        "placeholder": "Card Membership FAQs",
+        "custom_id": "tria_faq_membership_select",
+        "values": ["membership_benefits", "membership_roles", "membership_update"],
+    },
+    {
+        "placeholder": "Cashback FAQs",
+        "custom_id": "tria_faq_cashback_select",
+        "values": ["cashback_eligible", "cashback_claim", "cashback_timing"],
+    },
+]
+
 # ============================================================
 # OCR Setup
 # ============================================================
@@ -684,6 +770,7 @@ client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
 SYNCED_COMMANDS = {}
+PERSISTENT_VIEWS_REGISTERED = False
 
 def slash_cmd_mention(name: str) -> str:
     cmd = SYNCED_COMMANDS.get(name)
@@ -722,6 +809,60 @@ def build_tria_level_embed(member_name: str, level: int) -> discord.Embed:
     embed.set_image(url=f"attachment://{TRIA_ANIMATION_FILE_NAME}")
     embed.set_footer(text="Tria")
     return embed
+
+def build_faq_embeds() -> list[discord.Embed]:
+    main_embed = discord.Embed(
+        color=FAQ_COLOR,
+        title="Tria Cards: Frequently Asked Questions",
+        description="Choose a topic below to view the answer privately.",
+    )
+
+    footer_embed = discord.Embed(
+        color=FAQ_COLOR,
+        description=FAQ_COPYRIGHT,
+    )
+    footer_embed.set_footer(text="Tria")
+
+    return [main_embed, footer_embed]
+
+class FAQSelect(discord.ui.Select):
+    def __init__(self, placeholder: str, custom_id: str, values: list[str], row: int):
+        options = [
+            discord.SelectOption(
+                label=FAQ_ANSWERS[value]["label"],
+                value=value,
+            )
+            for value in values
+        ]
+        super().__init__(
+            placeholder=placeholder,
+            custom_id=custom_id,
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=row,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_value = self.values[0]
+        answer = FAQ_ANSWERS.get(selected_value, {}).get(
+            "answer",
+            "This FAQ answer is not configured yet.",
+        )
+        await interaction.response.send_message(answer, ephemeral=True)
+
+class FAQView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        for row, category in enumerate(FAQ_CATEGORIES):
+            self.add_item(
+                FAQSelect(
+                    placeholder=category["placeholder"],
+                    custom_id=category["custom_id"],
+                    values=category["values"],
+                    row=row,
+                )
+            )
 
 class XLinkLayout(discord.ui.LayoutView):
     def __init__(self, link: str, verify_mention: str):
@@ -1037,6 +1178,29 @@ async def getmycard_cmd(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+@tree.command(name="faq", description="Post the Tria Cards FAQ panel")
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def faq_cmd(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to post the FAQ panel.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message(
+        embeds=build_faq_embeds(),
+        view=FAQView(),
+    )
+
 @tree.command(name="trialevel", description="Post the Tria tree level animation")
 @discord.app_commands.describe(
     level="Level number to display",
@@ -1249,9 +1413,16 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 # -----------------------------
 @client.event
 async def on_ready():
+    global PERSISTENT_VIEWS_REGISTERED
+
     print(f"Logged in as {client.user} (ID: {client.user.id})")
     await database.init_db()
     print("Database initialized.")
+
+    if not PERSISTENT_VIEWS_REGISTERED:
+        client.add_view(FAQView())
+        PERSISTENT_VIEWS_REGISTERED = True
+        print("Persistent FAQ view registered.")
 
     try:
         if DISCORD_GUILD_ID:
