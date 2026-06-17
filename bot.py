@@ -79,6 +79,12 @@ TRIA_ANIMATION_PATH = os.path.join(
 )
 TRIA_ANIMATION_COLOR = 0xFFFFFF
 
+FAQ_IMAGE_FILE_NAME = "mindo-faq-qa.png"
+FAQ_IMAGE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "assets",
+    FAQ_IMAGE_FILE_NAME,
+)
 FAQ_COLOR = 0x22D3EE
 FAQ_COPYRIGHT = "(c) 2025 Tria. All rights reserved."
 FAQ_ANSWERS = {
@@ -810,12 +816,14 @@ def build_tria_level_embed(member_name: str, level: int) -> discord.Embed:
     embed.set_footer(text="Tria")
     return embed
 
-def build_faq_embeds() -> list[discord.Embed]:
+def build_faq_embeds(include_image: bool = False) -> list[discord.Embed]:
     main_embed = discord.Embed(
         color=FAQ_COLOR,
         title="Tria Cards: Frequently Asked Questions",
         description="Choose a topic below to view the answer privately.",
     )
+    if include_image:
+        main_embed.set_image(url=f"attachment://{FAQ_IMAGE_FILE_NAME}")
 
     footer_embed = discord.Embed(
         color=FAQ_COLOR,
@@ -1196,10 +1204,15 @@ async def faq_cmd(interaction: discord.Interaction):
         )
         return
 
-    await interaction.response.send_message(
-        embeds=build_faq_embeds(),
-        view=FAQView(),
-    )
+    include_image = os.path.exists(FAQ_IMAGE_PATH)
+    send_kwargs = {
+        "embeds": build_faq_embeds(include_image=include_image),
+        "view": FAQView(),
+    }
+    if include_image:
+        send_kwargs["file"] = discord.File(FAQ_IMAGE_PATH, filename=FAQ_IMAGE_FILE_NAME)
+
+    await interaction.response.send_message(**send_kwargs)
 
 @tree.command(name="trialevel", description="Post the Tria tree level animation")
 @discord.app_commands.describe(
