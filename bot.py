@@ -85,7 +85,7 @@ FAQ_IMAGE_PATH = os.path.join(
     "assets",
     FAQ_IMAGE_FILE_NAME,
 )
-FAQ_COLOR = 0x22D3EE
+FAQ_COLOR = 0x00FF99
 FAQ_COPYRIGHT = "(c) 2025 Tria. All rights reserved."
 FAQ_ANSWERS = {
     "tria_card_what_is": {
