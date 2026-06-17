@@ -86,74 +86,95 @@ FAQ_IMAGE_PATH = os.path.join(
     FAQ_IMAGE_FILE_NAME,
 )
 FAQ_COLOR = 0x00FF99
-FAQ_COPYRIGHT = "(c) 2025 Tria. All rights reserved."
+FAQ_COPYRIGHT = "(c) 2025 Mindo AI. All rights reserved."
 FAQ_ANSWERS = {
-    "tria_card_what_is": {
-        "label": "What is Tria Card?",
+    "mindoai_what_is": {
+        "label": "What is MindoAI?",
         "answer": (
-            "**What is Tria Card?**\n"
-            "Tria Card is a membership-style card experience for Tria community campaigns, rewards, and status."
+            "**What is MindoAI?**\n"
+            "MindoAI is an InfoFi platform powered by an AI engine that rewards creators "
+            "for the attention their content generates."
         ),
     },
-    "tria_card_get": {
-        "label": "How do I get a Tria Card?",
+    "mindoai_infofi": {
+        "label": "What is InfoFi?",
         "answer": (
-            "**How do I get a Tria Card?**\n"
-            "Use `/getmycard`, connect your X account, then complete the verification flow requested by the bot."
+            "**What is InfoFi?**\n"
+            "InfoFi is the next evolution of the creator economy - a space where information "
+            "has financial value."
         ),
     },
-    "tria_card_tiers": {
-        "label": "What card tiers exist?",
+    "mindoai_attention": {
+        "label": "How is attention measured?",
         "answer": (
-            "**What card tiers exist?**\n"
-            "The current verification flow can assign Bronze, Silver, or Gold card roles based on eligible score data."
+            "**How is attention measured?**\n"
+            "Through real metrics on X - views, engagement, and reactions."
         ),
     },
-    "membership_benefits": {
-        "label": "What are membership benefits?",
+    "mindoai_rewards": {
+        "label": "What determines user rewards?",
         "answer": (
-            "**What are membership benefits?**\n"
-            "Membership benefits can include campaign access, role recognition, and future Tria community perks."
+            "**What determines user rewards?**\n"
+            "Your rank on the leaderboards. There's a global leaderboard for overall MindoAI "
+            "activity and project-specific leaderboards that track attention on partner campaigns."
         ),
     },
-    "membership_roles": {
-        "label": "How are roles assigned?",
+    "mindoai_leaderboard": {
+        "label": "How can I move up the leaderboard?",
         "answer": (
-            "**How are roles assigned?**\n"
-            "The bot checks your linked X account and verification screenshot, then assigns the matching card role."
+            "**How can I move up the leaderboard?**\n"
+            "Post high-quality content, stay consistent, and engage with other creators in the "
+            "MindoAI ecosystem."
         ),
     },
-    "membership_update": {
-        "label": "Can my membership change?",
+    "mindoai_token": {
+        "label": "Will MindoAI have a token?",
         "answer": (
-            "**Can my membership change?**\n"
-            "Yes. Run verification again when your eligible score or campaign status changes."
+            "**Will MindoAI have a token?**\n"
+            "Yes - the $MND token. You can earn it by creating, engaging, and completing "
+            "activities across the MindoAI ecosystem."
         ),
     },
-    "cashback_eligible": {
-        "label": "Who is eligible for cashback?",
+    "mindoai_community": {
+        "label": "What else can I do in MindoAI?",
         "answer": (
-            "**Who is eligible for cashback?**\n"
-            "Cashback eligibility depends on the active campaign rules announced by the Tria team."
-        ),
-    },
-    "cashback_claim": {
-        "label": "How do I claim cashback?",
-        "answer": (
-            "**How do I claim cashback?**\n"
-            "Follow the active campaign instructions in Discord. If a claim flow is open, the team will announce it."
-        ),
-    },
-    "cashback_timing": {
-        "label": "When is cashback paid?",
-        "answer": (
-            "**When is cashback paid?**\n"
-            "Payment timing depends on campaign review and distribution schedules shared by the Tria team."
+            "**What else can I do in MindoAI?**\n"
+            "Join our Discord - take part in events, help newcomers, and connect with other creators."
         ),
     },
 }
 
+FAQ_ANSWER_ALIASES = {
+    "tria_card_what_is": "mindoai_what_is",
+    "tria_card_get": "mindoai_infofi",
+    "tria_card_tiers": "mindoai_attention",
+    "membership_benefits": "mindoai_rewards",
+    "membership_roles": "mindoai_leaderboard",
+    "membership_update": "mindoai_token",
+    "cashback_eligible": "mindoai_community",
+    "cashback_claim": "mindoai_community",
+    "cashback_timing": "mindoai_rewards",
+}
+
 FAQ_CATEGORIES = [
+    {
+        "placeholder": "MindoAI Basics",
+        "custom_id": "mindo_faq_basics_select",
+        "values": ["mindoai_what_is", "mindoai_infofi"],
+    },
+    {
+        "placeholder": "Attention & Rewards",
+        "custom_id": "mindo_faq_rewards_select",
+        "values": ["mindoai_attention", "mindoai_rewards", "mindoai_leaderboard"],
+    },
+    {
+        "placeholder": "Token & Community",
+        "custom_id": "mindo_faq_community_select",
+        "values": ["mindoai_token", "mindoai_community"],
+    },
+]
+
+FAQ_LEGACY_CATEGORIES = [
     {
         "placeholder": "Tria Card FAQs",
         "custom_id": "tria_faq_card_select",
@@ -819,7 +840,7 @@ def build_tria_level_embed(member_name: str, level: int) -> discord.Embed:
 def build_faq_embeds(include_image: bool = False) -> list[discord.Embed]:
     main_embed = discord.Embed(
         color=FAQ_COLOR,
-        title="Tria Cards: Frequently Asked Questions",
+        title="MindoAI Q&A",
         description="Choose a topic below to view the answer privately.",
     )
     if include_image:
@@ -829,7 +850,7 @@ def build_faq_embeds(include_image: bool = False) -> list[discord.Embed]:
         color=FAQ_COLOR,
         description=FAQ_COPYRIGHT,
     )
-    footer_embed.set_footer(text="Tria")
+    footer_embed.set_footer(text="Mindo AI")
 
     return [main_embed, footer_embed]
 
@@ -837,7 +858,7 @@ class FAQSelect(discord.ui.Select):
     def __init__(self, placeholder: str, custom_id: str, values: list[str], row: int):
         options = [
             discord.SelectOption(
-                label=FAQ_ANSWERS[value]["label"],
+                label=FAQ_ANSWERS[FAQ_ANSWER_ALIASES.get(value, value)]["label"],
                 value=value,
             )
             for value in values
@@ -853,16 +874,30 @@ class FAQSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         selected_value = self.values[0]
-        answer = FAQ_ANSWERS.get(selected_value, {}).get(
+        answer_key = FAQ_ANSWER_ALIASES.get(selected_value, selected_value)
+        answer = FAQ_ANSWERS.get(answer_key, {}).get(
             "answer",
             "This FAQ answer is not configured yet.",
         )
         await interaction.response.send_message(answer, ephemeral=True)
 
 class FAQView(discord.ui.View):
+    def __init__(self, categories: list[dict] | None = None):
+        super().__init__(timeout=None)
+        for row, category in enumerate(categories or FAQ_CATEGORIES):
+            self.add_item(
+                FAQSelect(
+                    placeholder=category["placeholder"],
+                    custom_id=category["custom_id"],
+                    values=category["values"],
+                    row=row,
+                )
+            )
+
+class LegacyFAQView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        for row, category in enumerate(FAQ_CATEGORIES):
+        for row, category in enumerate(FAQ_LEGACY_CATEGORIES):
             self.add_item(
                 FAQSelect(
                     placeholder=category["placeholder"],
@@ -1186,7 +1221,7 @@ async def getmycard_cmd(interaction: discord.Interaction):
         ephemeral=True,
     )
 
-@tree.command(name="faq", description="Post the Tria Cards FAQ panel")
+@tree.command(name="faq", description="Post the MindoAI Q&A panel")
 @discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def faq_cmd(interaction: discord.Interaction):
@@ -1434,8 +1469,9 @@ async def on_ready():
 
     if not PERSISTENT_VIEWS_REGISTERED:
         client.add_view(FAQView())
+        client.add_view(LegacyFAQView())
         PERSISTENT_VIEWS_REGISTERED = True
-        print("Persistent FAQ view registered.")
+        print("Persistent FAQ views registered.")
 
     try:
         if DISCORD_GUILD_ID:
