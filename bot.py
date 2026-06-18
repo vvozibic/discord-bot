@@ -160,19 +160,37 @@ FAQ_CATEGORIES = [
         "placeholder": "MindoAI Basics",
         "custom_id": "mindo_faq_basics_select",
         "values": ["mindoai_what_is", "mindoai_infofi"],
-        "default": "mindoai_what_is",
     },
     {
         "placeholder": "Attention & Rewards",
         "custom_id": "mindo_faq_rewards_select",
         "values": ["mindoai_attention", "mindoai_rewards", "mindoai_leaderboard"],
-        "default": "mindoai_attention",
     },
     {
         "placeholder": "Token & Community",
         "custom_id": "mindo_faq_community_select",
         "values": ["mindoai_token", "mindoai_community"],
-        "default": "mindoai_token",
+    },
+]
+
+FAQ_PRIMARY_BUTTONS = [
+    {
+        "label": "What is MindoAI?",
+        "custom_id": "mindo_faq_button_what_is",
+        "value": "mindoai_what_is",
+        "row": 0,
+    },
+    {
+        "label": "How is performance in leaderboard measured?",
+        "custom_id": "mindo_faq_button_performance",
+        "value": "mindoai_attention",
+        "row": 1,
+    },
+    {
+        "label": "Will MindoAI have a token?",
+        "custom_id": "mindo_faq_button_token",
+        "value": "mindoai_token",
+        "row": 1,
     },
 ]
 
@@ -857,13 +875,11 @@ class FAQSelect(discord.ui.Select):
         custom_id: str,
         values: list[str],
         row: int,
-        default_value: str | None = None,
     ):
         options = [
             discord.SelectOption(
                 label=FAQ_ANSWERS[FAQ_ANSWER_ALIASES.get(value, value)]["label"],
                 value=value,
-                default=(value == default_value),
             )
             for value in values
         ]
@@ -885,17 +901,44 @@ class FAQSelect(discord.ui.Select):
         )
         await interaction.response.send_message(answer, ephemeral=True)
 
+class FAQButton(discord.ui.Button):
+    def __init__(self, label: str, custom_id: str, value: str, row: int):
+        super().__init__(
+            label=label,
+            custom_id=custom_id,
+            style=discord.ButtonStyle.secondary,
+            row=row,
+        )
+        self.value = value
+
+    async def callback(self, interaction: discord.Interaction):
+        answer_key = FAQ_ANSWER_ALIASES.get(self.value, self.value)
+        answer = FAQ_ANSWERS.get(answer_key, {}).get(
+            "answer",
+            "This FAQ answer is not configured yet.",
+        )
+        await interaction.response.send_message(answer, ephemeral=True)
+
 class FAQView(discord.ui.View):
     def __init__(self, categories: list[dict] | None = None):
         super().__init__(timeout=None)
-        for row, category in enumerate(categories or FAQ_CATEGORIES):
+        for button in FAQ_PRIMARY_BUTTONS:
+            self.add_item(
+                FAQButton(
+                    label=button["label"],
+                    custom_id=button["custom_id"],
+                    value=button["value"],
+                    row=button["row"],
+                )
+            )
+
+        for row, category in enumerate(categories or FAQ_CATEGORIES, start=2):
             self.add_item(
                 FAQSelect(
                     placeholder=category["placeholder"],
                     custom_id=category["custom_id"],
                     values=category["values"],
                     row=row,
-                    default_value=category.get("default"),
                 )
             )
 
