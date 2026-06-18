@@ -99,8 +99,8 @@ FAQ_ANSWERS = {
         "label": "What is performance driven campaign?",
         "answer": (
             "**What is performance driven campaign?**\n"
-            "InfoFi is the next evolution of the creator economy - a space where information "
-            "has financial value."
+            "Performance-driven campaign rewards users for meaningful activity, measurable "
+            "results, and real contribution."
         ),
     },
     "mindoai_attention": {
