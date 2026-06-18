@@ -846,7 +846,7 @@ def build_faq_embeds(include_image: bool = False) -> list[discord.Embed]:
     main_embed = discord.Embed(
         color=FAQ_COLOR,
         title="MindoAI Q&A",
-        description="Choose a topic below to view the answer privately.",
+        description="Choose a topic below, then select the question you’re interested in to view its answer privately.",
     )
     if include_image:
         main_embed.set_image(url=f"attachment://{FAQ_IMAGE_FILE_NAME}")
