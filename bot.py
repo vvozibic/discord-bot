@@ -86,7 +86,6 @@ FAQ_IMAGE_PATH = os.path.join(
     FAQ_IMAGE_FILE_NAME,
 )
 FAQ_COLOR = 0x00FF99
-FAQ_COPYRIGHT = "(c) 2025 Mindo AI. All rights reserved."
 FAQ_ANSWERS = {
     "mindoai_what_is": {
         "label": "What is MindoAI?",
@@ -846,13 +845,7 @@ def build_faq_embeds(include_image: bool = False) -> list[discord.Embed]:
     if include_image:
         main_embed.set_image(url=f"attachment://{FAQ_IMAGE_FILE_NAME}")
 
-    footer_embed = discord.Embed(
-        color=FAQ_COLOR,
-        description=FAQ_COPYRIGHT,
-    )
-    footer_embed.set_footer(text="Mindo AI")
-
-    return [main_embed, footer_embed]
+    return [main_embed]
 
 class FAQSelect(discord.ui.Select):
     def __init__(self, placeholder: str, custom_id: str, values: list[str], row: int):
