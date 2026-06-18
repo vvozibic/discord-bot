@@ -131,8 +131,8 @@ FAQ_ANSWERS = {
         "label": "Will MindoAI have a token?",
         "answer": (
             "**Will MindoAI have a token?**\n"
-            "Yes - the $MND token. You can earn it by creating, engaging, and completing "
-            "activities across the MindoAI ecosystem."
+            "Yes - the $MND token. You can already earn an allocation of it by creating, "
+            "engaging, and completing activities across the MindoAI ecosystem."
         ),
     },
     "mindoai_community": {
