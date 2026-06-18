@@ -107,7 +107,9 @@ FAQ_ANSWERS = {
         "label": "How is performance in leaderboard measured?",
         "answer": (
             "**How is performance in leaderboard measured?**\n"
-            "Through real metrics on X - views, engagement, and reactions."
+            "Through metrics defined here: https://mindoshare.ai/perform\n\n"
+            "For each campaign specifically it could be perp volume, engagement, "
+            "referrals and their specific actions."
         ),
     },
     "mindoai_rewards": {
