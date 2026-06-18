@@ -173,7 +173,7 @@ FAQ_CATEGORIES = [
         "values": ["mindoai_attention", "mindoai_rewards", "mindoai_leaderboard"],
     },
     {
-        "placeholder": "Token & Community",
+        "placeholder": "Token Info & Ways to Contribute",
         "custom_id": "mindo_faq_community_select",
         "values": ["mindoai_token", "mindoai_community"],
     },
