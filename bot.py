@@ -139,9 +139,9 @@ FAQ_ANSWERS = {
         ),
     },
     "mindoai_community": {
-        "label": "Ways to Contribute",
+        "label": "How can I contribute?",
         "answer": (
-            "**Ways to Contribute**\n"
+            "**How can I contribute?**\n"
             "Become part of our Discord community - join events, be active in the community, "
             "support new members, meet other creators, and unlock roles that highlight your "
             "contributions."
