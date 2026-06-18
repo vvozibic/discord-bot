@@ -96,9 +96,9 @@ FAQ_ANSWERS = {
         ),
     },
     "mindoai_infofi": {
-        "label": "What is InfoFi?",
+        "label": "What is performance driven campaign?",
         "answer": (
-            "**What is InfoFi?**\n"
+            "**What is performance driven campaign?**\n"
             "InfoFi is the next evolution of the creator economy - a space where information "
             "has financial value."
         ),
