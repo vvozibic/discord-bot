@@ -91,8 +91,8 @@ FAQ_ANSWERS = {
         "label": "What is MindoAI?",
         "answer": (
             "**What is MindoAI?**\n"
-            "MindoAI is an InfoFi platform powered by an AI engine that rewards creators "
-            "for the attention their content generates."
+            "MindoAI is a platform that helps projects measure and reward real outcomes "
+            "across their communities."
         ),
     },
     "mindoai_infofi": {
