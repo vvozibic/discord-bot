@@ -138,10 +138,12 @@ FAQ_ANSWERS = {
         ),
     },
     "mindoai_community": {
-        "label": "What else can I do in MindoAI?",
+        "label": "What other ways can I contribute to Mindo AI?",
         "answer": (
-            "**What else can I do in MindoAI?**\n"
-            "Join our Discord - take part in events, help newcomers, and connect with other creators."
+            "**What other ways can I contribute to Mindo AI?**\n"
+            "Become part of our Discord community - join events, be active in the community, "
+            "support new members, meet other creators, and unlock roles that highlight your "
+            "contributions."
         ),
     },
 }
