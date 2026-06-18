@@ -139,9 +139,9 @@ FAQ_ANSWERS = {
         ),
     },
     "mindoai_community": {
-        "label": "What other ways can I contribute to Mindo AI?",
+        "label": "Token Info & Ways to Contribute",
         "answer": (
-            "**What other ways can I contribute to Mindo AI?**\n"
+            "**Token Info & Ways to Contribute**\n"
             "Become part of our Discord community - join events, be active in the community, "
             "support new members, meet other creators, and unlock roles that highlight your "
             "contributions."
@@ -168,7 +168,7 @@ FAQ_CATEGORIES = [
         "values": ["mindoai_what_is", "mindoai_infofi"],
     },
     {
-        "placeholder": "Attention & Rewards",
+        "placeholder": "Rank Climbing & Rewards",
         "custom_id": "mindo_faq_rewards_select",
         "values": ["mindoai_attention", "mindoai_rewards", "mindoai_leaderboard"],
     },
