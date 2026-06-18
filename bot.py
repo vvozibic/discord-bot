@@ -104,9 +104,9 @@ FAQ_ANSWERS = {
         ),
     },
     "mindoai_attention": {
-        "label": "How is attention measured?",
+        "label": "How is performance in leaderboard measured?",
         "answer": (
-            "**How is attention measured?**\n"
+            "**How is performance in leaderboard measured?**\n"
             "Through real metrics on X - views, engagement, and reactions."
         ),
     },
