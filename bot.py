@@ -125,8 +125,9 @@ FAQ_ANSWERS = {
         "label": "How can I move up the leaderboard?",
         "answer": (
             "**How can I move up the leaderboard?**\n"
-            "Post high-quality content, stay consistent, and engage with other creators in the "
-            "MindoAI ecosystem."
+            "Complete the requirements listed here: https://mindoshare.ai/perform and focus on "
+            "delivering stronger results than others on the leaderboard - the better your "
+            "performance, the higher your rank can grow."
         ),
     },
     "mindoai_token": {
