@@ -111,11 +111,12 @@ FAQ_ANSWERS = {
         ),
     },
     "mindoai_rewards": {
-        "label": "What determines user rewards?",
+        "label": "What types of rewards are available?",
         "answer": (
-            "**What determines user rewards?**\n"
-            "Your rank on the leaderboards. There's a global leaderboard for overall MindoAI "
-            "activity and project-specific leaderboards that track attention on partner campaigns."
+            "**What types of rewards are available?**\n"
+            "There are two main types of rewards:\n\n"
+            "1. Token allocations — distributed after the project’s TGE\n"
+            "2. USDT rewards — distributed directly in USDT"
         ),
     },
     "mindoai_leaderboard": {
