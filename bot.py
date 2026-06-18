@@ -160,16 +160,19 @@ FAQ_CATEGORIES = [
         "placeholder": "MindoAI Basics",
         "custom_id": "mindo_faq_basics_select",
         "values": ["mindoai_what_is", "mindoai_infofi"],
+        "default": "mindoai_what_is",
     },
     {
         "placeholder": "Attention & Rewards",
         "custom_id": "mindo_faq_rewards_select",
         "values": ["mindoai_attention", "mindoai_rewards", "mindoai_leaderboard"],
+        "default": "mindoai_attention",
     },
     {
         "placeholder": "Token & Community",
         "custom_id": "mindo_faq_community_select",
         "values": ["mindoai_token", "mindoai_community"],
+        "default": "mindoai_token",
     },
 ]
 
@@ -848,11 +851,19 @@ def build_faq_embeds(include_image: bool = False) -> list[discord.Embed]:
     return [main_embed]
 
 class FAQSelect(discord.ui.Select):
-    def __init__(self, placeholder: str, custom_id: str, values: list[str], row: int):
+    def __init__(
+        self,
+        placeholder: str,
+        custom_id: str,
+        values: list[str],
+        row: int,
+        default_value: str | None = None,
+    ):
         options = [
             discord.SelectOption(
                 label=FAQ_ANSWERS[FAQ_ANSWER_ALIASES.get(value, value)]["label"],
                 value=value,
+                default=(value == default_value),
             )
             for value in values
         ]
@@ -884,6 +895,7 @@ class FAQView(discord.ui.View):
                     custom_id=category["custom_id"],
                     values=category["values"],
                     row=row,
+                    default_value=category.get("default"),
                 )
             )
 
