@@ -16,6 +16,7 @@ import base64
 import aiohttp
 import hmac
 import database
+from datetime import datetime, timezone
 from discord.ui.media_gallery import MediaGalleryItem
 from profile_card import (
     CARD_ATTACHMENT_NAME,
@@ -47,6 +48,55 @@ DISCORD_GUILD_ID = int(getattr(config, "DISCORD_GUILD_ID", os.getenv("DISCORD_GU
 
 # Optional: restrict /verify to one channel (0 = allow everywhere)
 VERIFY_CHANNEL_ID = int(getattr(config, "VERIFY_CHANNEL_ID", os.getenv("VERIFY_CHANNEL_ID", "0")) or 0)
+
+# Believer campaign settings
+BELIEVER_CAMPAIGN_CHANNEL_ID = int(
+    getattr(
+        config,
+        "BELIEVER_CAMPAIGN_CHANNEL_ID",
+        os.getenv("BELIEVER_CAMPAIGN_CHANNEL_ID", "1421187164187791381"),
+    ) or 0
+)
+BELIEVER_ROLE_ID = int(
+    getattr(
+        config,
+        "BELIEVER_ROLE_ID",
+        os.getenv("BELIEVER_ROLE_ID", "1516725109941993532"),
+    ) or 0
+)
+# 2026-06-19 00:00 Europe/Warsaw == 2026-06-18 22:00 UTC.
+BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
+BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
+BELIEVER_CAMPAIGN_MESSAGE = """72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
+
+💰Rewards:
+
+• $1,000 USDT - 50 randomly selected participants will receive $20 USDT
+• Exclusive Discord Role: "Believer" - every participant will receive it
+
+Despite the temporary suspension of our X account, we continue to build and move forward.
+
+While the timeline for restoring the account remains unclear, it's important for us to stay connected with all of you on one social platform
+
+The main idea of the campaign is simple: be a member of our TG and DS communities and share this with your audience on X
+
+
+HOW TO PARTICIPATE:
+
+1. Make sure you're a member of our Discord and Telegram communities
+
+Discord: https://discord.com/invite/mindoai
+Telegram: https://t.me/MindoAI
+
+2. Create a post on X about current campaign (make sure you include links to our ds and tg community)
+
+3. Share link with your X post in this channel:
+
+4. Click the "Participate" button on this announcement
+
+Campaign is LIVE from now until June 25, 2026, 18:00 UTC.
+
+LGF MindoAI family 💚"""
 
 # OCR concurrency limiter (important under load)
 DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
@@ -832,6 +882,58 @@ def _result_color(result: VerificationResult) -> int:
 def _display_name(user) -> str:
     return getattr(user, "display_name", None) or getattr(user, "name", "Member")
 
+async def get_believer_campaign_channel(guild: discord.Guild):
+    get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
+    channel = (
+        get_channel_or_thread(BELIEVER_CAMPAIGN_CHANNEL_ID)
+        if callable(get_channel_or_thread)
+        else guild.get_channel(BELIEVER_CAMPAIGN_CHANNEL_ID)
+    )
+
+    if channel is None:
+        try:
+            channel = await client.fetch_channel(BELIEVER_CAMPAIGN_CHANNEL_ID)
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            return None
+
+    if getattr(getattr(channel, "guild", None), "id", guild.id) != guild.id:
+        return None
+
+    return channel
+
+async def member_has_believer_activity(channel, user_id: int) -> bool:
+    async for message in channel.history(
+        limit=None,
+        after=BELIEVER_ACTIVITY_AFTER,
+        oldest_first=False,
+    ):
+        if getattr(message.author, "id", None) == user_id:
+            return True
+    return False
+
+async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
+    if not BELIEVER_ROLE_ID:
+        return False, "Believer role ID is not configured."
+
+    role = member.guild.get_role(BELIEVER_ROLE_ID)
+    if role is None:
+        return False, f"Could not find the Believer role `<@&{BELIEVER_ROLE_ID}>` in this server."
+
+    if role in member.roles:
+        return True, f"You already have {role.mention}."
+
+    try:
+        await member.add_roles(role, reason="Believer campaign participation")
+    except discord.Forbidden:
+        return False, (
+            "I don't have permission to assign this role. "
+            "Please grant **Manage Roles** and place my bot role above the Believer role."
+        )
+    except discord.HTTPException as exc:
+        return False, f"Discord rejected the role update: {exc}"
+
+    return True, f"{role.mention} assigned."
+
 def build_tria_level_embed(member_name: str, level: int) -> discord.Embed:
     embed = discord.Embed(
         color=TRIA_ANIMATION_COLOR,
@@ -910,6 +1012,84 @@ class LegacyFAQView(discord.ui.View):
                     values=category["values"],
                     row=row,
                 )
+            )
+
+class BelieverCampaignView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Participate",
+        style=discord.ButtonStyle.success,
+        emoji="💚",
+        custom_id=BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID,
+    )
+    async def participate(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message(
+                "This button can only be used inside the server.",
+                ephemeral=True,
+            )
+            return
+
+        if not BELIEVER_CAMPAIGN_CHANNEL_ID:
+            await interaction.response.send_message(
+                "Campaign channel ID is not configured.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        channel = await get_believer_campaign_channel(interaction.guild)
+        if channel is None or not hasattr(channel, "history"):
+            await interaction.followup.send(
+                f"I can't access <#{BELIEVER_CAMPAIGN_CHANNEL_ID}> to check your message.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            has_activity = await member_has_believer_activity(
+                channel,
+                interaction.user.id,
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I need **Read Message History** permission in the campaign channel.",
+                ephemeral=True,
+            )
+            return
+        except discord.HTTPException as exc:
+            await interaction.followup.send(
+                f"Discord rejected the message history check: {exc}",
+                ephemeral=True,
+            )
+            return
+
+        if not has_activity:
+            await interaction.followup.send(
+                "I couldn't find a message from you in "
+                f"<#{BELIEVER_CAMPAIGN_CHANNEL_ID}> after **June 19, 2026**. "
+                "Share your X post link there first, then press **Participate** again.",
+                ephemeral=True,
+            )
+            return
+
+        ok, message = await assign_believer_role(interaction.user)
+        if ok:
+            await interaction.followup.send(
+                f"You're in. {message}",
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send(
+                f"Your message was found, but I couldn't assign the role. {message}",
+                ephemeral=True,
             )
 
 class XLinkLayout(discord.ui.LayoutView):
@@ -1254,6 +1434,64 @@ async def faq_cmd(interaction: discord.Interaction):
 
     await interaction.response.send_message(**send_kwargs)
 
+@tree.command(name="postbelievercampaign", description="Post the Believer campaign announcement")
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def postbelievercampaign_cmd(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to post the campaign announcement.",
+            ephemeral=True,
+        )
+        return
+
+    if not BELIEVER_CAMPAIGN_CHANNEL_ID:
+        await interaction.response.send_message(
+            "Believer campaign channel ID is not configured.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    channel = await get_believer_campaign_channel(interaction.guild)
+    if channel is None or not hasattr(channel, "send"):
+        await interaction.followup.send(
+            f"I can't access <#{BELIEVER_CAMPAIGN_CHANNEL_ID}> to post the announcement.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        message = await channel.send(
+            content=BELIEVER_CAMPAIGN_MESSAGE,
+            view=BelieverCampaignView(),
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "I need permission to send messages in the campaign channel.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord rejected the announcement message: {exc}",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.followup.send(
+        f"Believer campaign announcement posted: {message.jump_url}",
+        ephemeral=True,
+    )
+
 @tree.command(name="trialevel", description="Post the Tria tree level animation")
 @discord.app_commands.describe(
     level="Level number to display",
@@ -1475,8 +1713,9 @@ async def on_ready():
     if not PERSISTENT_VIEWS_REGISTERED:
         client.add_view(FAQView())
         client.add_view(LegacyFAQView())
+        client.add_view(BelieverCampaignView())
         PERSISTENT_VIEWS_REGISTERED = True
-        print("Persistent FAQ views registered.")
+        print("Persistent views registered.")
 
     try:
         if DISCORD_GUILD_ID:
