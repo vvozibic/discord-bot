@@ -5,6 +5,8 @@ load_dotenv()
 
 DISCORD_TOKEN = (os.getenv("DISCORD_TOKEN") or "").strip()
 VERIFY_CHANNEL = (os.getenv("VERIFY_CHANNEL", "verify") or "").strip()
+BELIEVER_CAMPAIGN_CHANNEL_ID = int(os.getenv("BELIEVER_CAMPAIGN_CHANNEL_ID", "1421187164187791381") or 0)
+BELIEVER_ROLE_ID = int(os.getenv("BELIEVER_ROLE_ID", "1516725109941993532") or 0)
 
 # X OAuth2 Settings
 X_CLIENT_ID = os.getenv("X_CLIENT_ID", "")
