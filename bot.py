@@ -1032,7 +1032,7 @@ class BelieverCampaignView(discord.ui.View):
     @discord.ui.button(
         label="Participate",
         style=discord.ButtonStyle.success,
-        emoji="💚",
+        emoji="<:004:1420713409346928650>",
         custom_id=BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID,
     )
     async def participate(
