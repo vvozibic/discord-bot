@@ -67,6 +67,7 @@ BELIEVER_ROLE_ID = int(
 # 2026-06-19 00:00 Europe/Warsaw == 2026-06-18 22:00 UTC.
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
+BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
 BELIEVER_CAMPAIGN_MESSAGE = """72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
 💰Rewards:
@@ -846,7 +847,7 @@ def resolve_profile_card_tier(result: VerificationResult) -> str | None:
 # ============================================================
 intents = discord.Intents.default()
 intents.guilds = True
-intents.message_content = False
+intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
@@ -901,15 +902,25 @@ async def get_believer_campaign_channel(guild: discord.Guild):
 
     return channel
 
-async def member_has_believer_activity(channel, user_id: int) -> bool:
+def message_has_x_link(message: discord.Message) -> bool:
+    return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
+
+async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool]:
+    saw_member_message = False
+
     async for message in channel.history(
         limit=None,
         after=BELIEVER_ACTIVITY_AFTER,
         oldest_first=False,
     ):
-        if getattr(message.author, "id", None) == user_id:
-            return True
-    return False
+        if getattr(message.author, "id", None) != user_id:
+            continue
+
+        saw_member_message = True
+        if message_has_x_link(message):
+            return True, saw_member_message
+
+    return False, saw_member_message
 
 async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
     if not BELIEVER_ROLE_ID:
@@ -1054,7 +1065,7 @@ class BelieverCampaignView(discord.ui.View):
             return
 
         try:
-            has_activity = await member_has_believer_activity(
+            has_x_link, saw_member_message = await find_member_believer_x_link(
                 channel,
                 interaction.user.id,
             )
@@ -1071,11 +1082,22 @@ class BelieverCampaignView(discord.ui.View):
             )
             return
 
-        if not has_activity:
+        if not has_x_link:
+            if saw_member_message:
+                not_found_message = (
+                    "I found a message from you in "
+                    f"<#{BELIEVER_CAMPAIGN_CHANNEL_ID}>, but it doesn't contain an `x.com` link. "
+                    "Share your X post link as plain text, then press **Participate** again."
+                )
+            else:
+                not_found_message = (
+                    "I couldn't find a message from you in "
+                    f"<#{BELIEVER_CAMPAIGN_CHANNEL_ID}> after **June 19, 2026**. "
+                    "Share your X post link there first, then press **Participate** again."
+                )
+
             await interaction.followup.send(
-                "I couldn't find a message from you in "
-                f"<#{BELIEVER_CAMPAIGN_CHANNEL_ID}> after **June 19, 2026**. "
-                "Share your X post link there first, then press **Participate** again.",
+                not_found_message,
                 ephemeral=True,
             )
             return
