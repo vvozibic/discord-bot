@@ -70,7 +70,7 @@ BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
 BELIEVER_CAMPAIGN_MESSAGE = """72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
-💰Rewards:
+**💰Rewards:**
 
 • $1,000 USDT - 50 randomly selected participants will receive $20 USDT
 • Exclusive Discord Role: "Believer" - every participant will receive it
@@ -82,7 +82,7 @@ While the timeline for restoring the account remains unclear, it's important for
 The main idea of the campaign is simple: be a member of our TG and DS communities and share this with your audience on X
 
 
-HOW TO PARTICIPATE:
+**HOW TO PARTICIPATE:**
 
 1. Make sure you're a member of our Discord and Telegram communities
 
@@ -95,7 +95,7 @@ Telegram: https://t.me/MindoAI
 
 4. Click the "Participate" button on this announcement
 
-Campaign is LIVE from now until June 25, 2026, 18:00 UTC.
+Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
 
 LGF MindoAI family 💚"""
 
