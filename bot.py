@@ -57,6 +57,13 @@ BELIEVER_CAMPAIGN_CHANNEL_ID = int(
         os.getenv("BELIEVER_CAMPAIGN_CHANNEL_ID", "1421187164187791381"),
     ) or 0
 )
+BELIEVER_PROOF_CHANNEL_ID = int(
+    getattr(
+        config,
+        "BELIEVER_PROOF_CHANNEL_ID",
+        os.getenv("BELIEVER_PROOF_CHANNEL_ID", "1432842655704027259"),
+    ) or 0
+)
 BELIEVER_ROLE_ID = int(
     getattr(
         config,
@@ -883,17 +890,17 @@ def _result_color(result: VerificationResult) -> int:
 def _display_name(user) -> str:
     return getattr(user, "display_name", None) or getattr(user, "name", "Member")
 
-async def get_believer_campaign_channel(guild: discord.Guild):
+async def get_believer_channel(guild: discord.Guild, channel_id: int):
     get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
     channel = (
-        get_channel_or_thread(BELIEVER_CAMPAIGN_CHANNEL_ID)
+        get_channel_or_thread(channel_id)
         if callable(get_channel_or_thread)
-        else guild.get_channel(BELIEVER_CAMPAIGN_CHANNEL_ID)
+        else guild.get_channel(channel_id)
     )
 
     if channel is None:
         try:
-            channel = await client.fetch_channel(BELIEVER_CAMPAIGN_CHANNEL_ID)
+            channel = await client.fetch_channel(channel_id)
         except (discord.Forbidden, discord.NotFound, discord.HTTPException):
             return None
 
@@ -901,6 +908,12 @@ async def get_believer_campaign_channel(guild: discord.Guild):
         return None
 
     return channel
+
+async def get_believer_campaign_channel(guild: discord.Guild):
+    return await get_believer_channel(guild, BELIEVER_CAMPAIGN_CHANNEL_ID)
+
+async def get_believer_proof_channel(guild: discord.Guild):
+    return await get_believer_channel(guild, BELIEVER_PROOF_CHANNEL_ID)
 
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
@@ -1047,19 +1060,19 @@ class BelieverCampaignView(discord.ui.View):
             )
             return
 
-        if not BELIEVER_CAMPAIGN_CHANNEL_ID:
+        if not BELIEVER_PROOF_CHANNEL_ID:
             await interaction.response.send_message(
-                "Campaign channel ID is not configured.",
+                "Proof channel ID is not configured.",
                 ephemeral=True,
             )
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        channel = await get_believer_campaign_channel(interaction.guild)
+        channel = await get_believer_proof_channel(interaction.guild)
         if channel is None or not hasattr(channel, "history"):
             await interaction.followup.send(
-                f"I can't access <#{BELIEVER_CAMPAIGN_CHANNEL_ID}> to check your message.",
+                f"I can't access <#{BELIEVER_PROOF_CHANNEL_ID}> to check your message.",
                 ephemeral=True,
             )
             return
@@ -1071,7 +1084,7 @@ class BelieverCampaignView(discord.ui.View):
             )
         except discord.Forbidden:
             await interaction.followup.send(
-                "I need **Read Message History** permission in the campaign channel.",
+                f"I need **Read Message History** permission in <#{BELIEVER_PROOF_CHANNEL_ID}>.",
                 ephemeral=True,
             )
             return
@@ -1086,13 +1099,13 @@ class BelieverCampaignView(discord.ui.View):
             if saw_member_message:
                 not_found_message = (
                     "I found a message from you in "
-                    f"<#{BELIEVER_CAMPAIGN_CHANNEL_ID}>, but it doesn't contain an `x.com` link. "
+                    f"<#{BELIEVER_PROOF_CHANNEL_ID}>, but it doesn't contain an `x.com` link. "
                     "Share your X post link as plain text, then press **Participate** again."
                 )
             else:
                 not_found_message = (
                     "I couldn't find a message from you in "
-                    f"<#{BELIEVER_CAMPAIGN_CHANNEL_ID}> after **June 19, 2026**. "
+                    f"<#{BELIEVER_PROOF_CHANNEL_ID}> after **June 19, 2026**. "
                     "Share your X post link there first, then press **Participate** again."
                 )
 
