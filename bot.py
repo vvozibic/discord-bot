@@ -75,7 +75,7 @@ BELIEVER_ROLE_ID = int(
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
-BELIEVER_CAMPAIGN_MESSAGE = """72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
+BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
 **💰Rewards:**
 
