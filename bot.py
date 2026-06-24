@@ -104,6 +104,8 @@ Telegram: https://t.me/MindoAI
 
 Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
 
+After the campaign ends, we will announce the final results and select the winners live during the stream.
+
 LGF MindoAI family 💚"""
 
 # OCR concurrency limiter (important under load)
