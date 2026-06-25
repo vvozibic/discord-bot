@@ -12,7 +12,7 @@ CARD_ATTACHMENT_NAME = "linked-profile-card.png"
 PROFILE_CARD_CACHE_DIR = Path(
     os.getenv("PROFILE_CARD_CACHE_DIR", Path(tempfile.gettempdir()) / "mindo_profile_card_cache")
 )
-PROFILE_CARD_BADGE_TEXT = os.getenv("PROFILE_CARD_BADGE_TEXT", "Mindo Early Believer")
+PROFILE_CARD_BADGE_TEXT = os.getenv("PROFILE_CARD_BADGE_TEXT", "Mindo Early Ascended")
 NODE_BIN = os.getenv("NODE_BIN", "").strip()
 RENDERER_SCRIPT = Path(__file__).resolve().parent / "renderer" / "render-profile-card.mjs"
 TEMPLATE_DIR = Path(__file__).resolve().parent / "renderer" / "templates"
