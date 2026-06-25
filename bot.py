@@ -102,7 +102,7 @@ Telegram: <https://t.me/MindoAI>
 
 4. Click the "Participate in Campaign" button on this announcement
 
-Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
+Campaign is LIVE **from now until June 28, 2026, 18:00 UTC.**
 
 After the campaign ends, we will announce the final results and select the winners live during the stream.
 
