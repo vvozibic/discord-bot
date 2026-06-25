@@ -54,7 +54,7 @@ BELIEVER_CAMPAIGN_CHANNEL_ID = int(
     getattr(
         config,
         "BELIEVER_CAMPAIGN_CHANNEL_ID",
-        os.getenv("BELIEVER_CAMPAIGN_CHANNEL_ID", "1421187164187791381"),
+        os.getenv("BELIEVER_CAMPAIGN_CHANNEL_ID", "1400787115008331868"),
     ) or 0
 )
 BELIEVER_PROOF_CHANNEL_ID = int(
@@ -100,11 +100,11 @@ Telegram: <https://t.me/MindoAI>
 
 3. Share link with your X post in this channel: https://discord.com/channels/1400787114333044887/1432842655704027259
 
-4. Click the "Participate in Campaign" button on this announcement <@&1410044936769900696>
+4. Click the "Participate in Campaign" button on this announcement
 
 Campaign is LIVE **from now until June 28, 2026, 18:00 UTC.**
 
-After the campaign ends, we will announce the final results and randomly select the winners.
+After the campaign ends, we will announce the final results and randomly select the winners.<@&1410044936769900696>
 
 LGF MindoAI family :green_heart:"""
 BELIEVER_CAMPAIGN_IMAGE_FILE_NAME = "believer-campaign.png"
