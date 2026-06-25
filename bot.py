@@ -107,6 +107,12 @@ Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
 After the campaign ends, we will announce the final results and select the winners live during the stream.
 
 LGF MindoAI family 💚"""
+BELIEVER_CAMPAIGN_IMAGE_FILE_NAME = "believer-campaign.png"
+BELIEVER_CAMPAIGN_IMAGE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "assets",
+    BELIEVER_CAMPAIGN_IMAGE_FILE_NAME,
+)
 
 # OCR concurrency limiter (important under load)
 DEFAULT_OCR_CONCURRENCY = max(1, min(2, os.cpu_count() or 1))
@@ -1507,10 +1513,18 @@ async def postbelievercampaign_cmd(interaction: discord.Interaction):
         return
 
     try:
-        message = await channel.send(
-            content=BELIEVER_CAMPAIGN_MESSAGE,
-            view=BelieverCampaignView(),
-        )
+        send_kwargs = {
+            "content": BELIEVER_CAMPAIGN_MESSAGE,
+            "view": BelieverCampaignView(),
+            "suppress_embeds": True,
+        }
+        if os.path.exists(BELIEVER_CAMPAIGN_IMAGE_PATH):
+            send_kwargs["file"] = discord.File(
+                BELIEVER_CAMPAIGN_IMAGE_PATH,
+                filename=BELIEVER_CAMPAIGN_IMAGE_FILE_NAME,
+            )
+
+        message = await channel.send(**send_kwargs)
     except discord.Forbidden:
         await interaction.followup.send(
             "I need permission to send messages in the campaign channel.",
