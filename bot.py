@@ -93,7 +93,7 @@ The main idea of the campaign is simple: be a member of our TG and DS communitie
 
 1. Make sure you're a member of our Discord and Telegram communities
 
-Discord: <https://discord.com/invite/mindoai>
+Discord: <https://discord.gg/mindoai>
 Telegram: <https://t.me/MindoAI>
 
 2. Create a post on X about current campaign (make sure you include links to our ds and tg community)
