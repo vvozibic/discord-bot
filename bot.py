@@ -104,7 +104,7 @@ Telegram: <https://t.me/MindoAI>
 
 Campaign is LIVE **from now until June 28, 2026, 18:00 UTC.**
 
-After the campaign ends, we will announce the final results and select the winners live during the stream.
+After the campaign ends, we will announce the final results and randomly select the winners.
 
 LGF MindoAI family :green_heart:"""
 BELIEVER_CAMPAIGN_IMAGE_FILE_NAME = "believer-campaign.png"
