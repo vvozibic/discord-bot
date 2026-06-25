@@ -49,7 +49,7 @@ DISCORD_GUILD_ID = int(getattr(config, "DISCORD_GUILD_ID", os.getenv("DISCORD_GU
 # Optional: restrict /verify to one channel (0 = allow everywhere)
 VERIFY_CHANNEL_ID = int(getattr(config, "VERIFY_CHANNEL_ID", os.getenv("VERIFY_CHANNEL_ID", "0")) or 0)
 
-# Believer campaign settings
+# Ascended campaign settings
 BELIEVER_CAMPAIGN_CHANNEL_ID = int(
     getattr(
         config,
@@ -945,21 +945,21 @@ async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool
 
 async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
     if not BELIEVER_ROLE_ID:
-        return False, "Believer role ID is not configured."
+        return False, "Ascended role ID is not configured."
 
     role = member.guild.get_role(BELIEVER_ROLE_ID)
     if role is None:
-        return False, f"Could not find the Believer role `<@&{BELIEVER_ROLE_ID}>` in this server."
+        return False, f"Could not find the Ascended role `<@&{BELIEVER_ROLE_ID}>` in this server."
 
     if role in member.roles:
         return True, f"You already have {role.mention}."
 
     try:
-        await member.add_roles(role, reason="Believer campaign participation")
+        await member.add_roles(role, reason="Ascended campaign participation")
     except discord.Forbidden:
         return False, (
             "I don't have permission to assign this role. "
-            "Please grant **Manage Roles** and place my bot role above the Believer role."
+            "Please grant **Manage Roles** and place my bot role above the Ascended role."
         )
     except discord.HTTPException as exc:
         return False, f"Discord rejected the role update: {exc}"
@@ -1477,7 +1477,7 @@ async def faq_cmd(interaction: discord.Interaction):
 
     await interaction.response.send_message(**send_kwargs)
 
-@tree.command(name="postbelievercampaign", description="Post the Believer campaign announcement")
+@tree.command(name="postbelievercampaign", description="Post the Ascended campaign announcement")
 @discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def postbelievercampaign_cmd(interaction: discord.Interaction):
@@ -1497,7 +1497,7 @@ async def postbelievercampaign_cmd(interaction: discord.Interaction):
 
     if not BELIEVER_CAMPAIGN_CHANNEL_ID:
         await interaction.response.send_message(
-            "Believer campaign channel ID is not configured.",
+            "Ascended campaign channel ID is not configured.",
             ephemeral=True,
         )
         return
@@ -1539,7 +1539,7 @@ async def postbelievercampaign_cmd(interaction: discord.Interaction):
         return
 
     await interaction.followup.send(
-        f"Believer campaign announcement posted: {message.jump_url}",
+        f"Ascended campaign announcement posted: {message.jump_url}",
         ephemeral=True,
     )
 
