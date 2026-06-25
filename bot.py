@@ -80,7 +80,7 @@ BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ R
 **:moneybag:Rewards:**
 
 • $1,000 USDT - 50 randomly selected participants will receive $20 USDT
-• Exclusive Discord Role: @Ascended - every participant will receive it
+• Exclusive Discord Role: <@&1516725109941993532> - every participant will receive it
 
 Despite the temporary suspension of our X account, we continue to build and move forward.
 
