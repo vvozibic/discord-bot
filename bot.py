@@ -77,10 +77,10 @@ BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
 BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
-**💰Rewards:**
+**:moneybag:Rewards:**
 
 • $1,000 USDT - 50 randomly selected participants will receive $20 USDT
-• Exclusive Discord Role: <@&1516725109941993532> - every participant will receive it
+• Exclusive Discord Role: @Ascended - every participant will receive it
 
 Despite the temporary suspension of our X account, we continue to build and move forward.
 
@@ -98,7 +98,7 @@ Telegram: <https://t.me/MindoAI>
 
 2. Create a post on X about current campaign (make sure you include links to our ds and tg community)
 
-3. Share link with your X post in this channel:
+3. Share link with your X post in this channel: https://discord.com/channels/1400787114333044887/1432842655704027259
 
 4. Click the "Participate in Campaign" button on this announcement
 
@@ -106,7 +106,7 @@ Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
 
 After the campaign ends, we will announce the final results and select the winners live during the stream.
 
-LGF MindoAI family 💚"""
+LGF MindoAI family :green_heart:"""
 BELIEVER_CAMPAIGN_IMAGE_FILE_NAME = "believer-campaign.png"
 BELIEVER_CAMPAIGN_IMAGE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
