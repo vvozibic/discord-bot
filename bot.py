@@ -80,7 +80,7 @@ BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ R
 **💰Rewards:**
 
 • $1,000 USDT - 50 randomly selected participants will receive $20 USDT
-• Exclusive Discord Role: @Ascended - every participant will receive it
+• Exclusive Discord Role: <@&1516725109941993532> - every participant will receive it
 
 Despite the temporary suspension of our X account, we continue to build and move forward.
 
@@ -100,7 +100,7 @@ Telegram: <https://t.me/MindoAI>
 
 3. Share link with your X post in this channel:
 
-4. Click the "⚡ Participate in Campaign" button on this announcement
+4. Click the "Participate in Campaign" button on this announcement
 
 Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
 
