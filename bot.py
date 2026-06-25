@@ -80,7 +80,7 @@ BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ R
 **💰Rewards:**
 
 • $1,000 USDT - 50 randomly selected participants will receive $20 USDT
-• Exclusive Discord Role: "1516725109941993532" - every participant will receive it
+• Exclusive Discord Role: @Ascended - every participant will receive it
 
 Despite the temporary suspension of our X account, we continue to build and move forward.
 
@@ -93,14 +93,14 @@ The main idea of the campaign is simple: be a member of our TG and DS communitie
 
 1. Make sure you're a member of our Discord and Telegram communities
 
-Discord: https://discord.com/invite/mindoai
-Telegram: https://t.me/MindoAI
+Discord: <https://discord.com/invite/mindoai>
+Telegram: <https://t.me/MindoAI>
 
 2. Create a post on X about current campaign (make sure you include links to our ds and tg community)
 
 3. Share link with your X post in this channel:
 
-4. Click the "Participate" button on this announcement
+4. Click the "⚡ Participate in Campaign" button on this announcement
 
 Campaign is LIVE **from now until June 25, 2026, 18:00 UTC.**
 
@@ -1051,7 +1051,7 @@ class BelieverCampaignView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Participate",
+        label="⚡ Participate in Campaign",
         style=discord.ButtonStyle.success,
         emoji="<:004:1420713409346928650>",
         custom_id=BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID,
