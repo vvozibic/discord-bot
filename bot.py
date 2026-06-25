@@ -91,7 +91,7 @@ The main idea of the campaign is simple: be a member of our TG and DS communitie
 
 **HOW TO PARTICIPATE:**
 
-1. Make sure you're a member of our Discord and Telegram communities
+1. Make sure you're a follower of our Discord and Telegram communities
 
 Discord: <https://discord.gg/mindoai>
 Telegram: <https://t.me/MindoAI>
