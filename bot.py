@@ -1051,7 +1051,7 @@ class BelieverCampaignView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="⚡ Participate in Campaign",
+        label="Participate in Campaign",
         style=discord.ButtonStyle.success,
         emoji="<:004:1420713409346928650>",
         custom_id=BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID,
