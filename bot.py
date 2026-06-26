@@ -75,11 +75,6 @@ BELIEVER_ROLE_ID = int(
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
-BELIEVER_X_STATUS_LINK_RE = re.compile(
-    r"(?:https?://)?(?:www\.)?x\.com/[^/\s]+/status/(\d+)",
-    re.IGNORECASE,
-)
-BELIEVER_BLOCKED_X_STATUS_IDS = {"2070365691019137502"}
 BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
 **:moneybag:Rewards:**
@@ -931,33 +926,8 @@ async def get_believer_proof_channel(guild: discord.Guild):
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
-def message_has_blocked_x_link(message: discord.Message) -> bool:
-    content = message.content or ""
-    return any(
-        match.group(1) in BELIEVER_BLOCKED_X_STATUS_IDS
-        for match in BELIEVER_X_STATUS_LINK_RE.finditer(content)
-    )
-
-async def maybe_delete_blocked_believer_x_link(message: discord.Message) -> bool:
-    if not BELIEVER_PROOF_CHANNEL_ID:
-        return False
-    if message.author.bot:
-        return False
-    if getattr(message.channel, "id", None) != BELIEVER_PROOF_CHANNEL_ID:
-        return False
-    if not message_has_blocked_x_link(message):
-        return False
-
-    try:
-        await message.delete(reason="Blocked Ascended campaign proof link")
-    except (discord.Forbidden, discord.NotFound, discord.HTTPException):
-        return False
-
-    return True
-
-async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool, bool]:
+async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool]:
     saw_member_message = False
-    saw_valid_x_link = False
 
     async for message in channel.history(
         limit=None,
@@ -968,13 +938,10 @@ async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool
             continue
 
         saw_member_message = True
-        if message_has_blocked_x_link(message):
-            return False, saw_member_message, True
-
         if message_has_x_link(message):
-            saw_valid_x_link = True
+            return True, saw_member_message
 
-    return saw_valid_x_link, saw_member_message, False
+    return False, saw_member_message
 
 async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
     if not BELIEVER_ROLE_ID:
@@ -1119,7 +1086,7 @@ class BelieverCampaignView(discord.ui.View):
             return
 
         try:
-            has_x_link, saw_member_message, saw_blocked_x_link = await find_member_believer_x_link(
+            has_x_link, saw_member_message = await find_member_believer_x_link(
                 channel,
                 interaction.user.id,
             )
@@ -1132,15 +1099,6 @@ class BelieverCampaignView(discord.ui.View):
         except discord.HTTPException as exc:
             await interaction.followup.send(
                 f"Discord rejected the message history check: {exc}",
-                ephemeral=True,
-            )
-            return
-
-        if saw_blocked_x_link:
-            await interaction.followup.send(
-                "That X post link is not eligible for this campaign. "
-                f"Share your own X post link in <#{BELIEVER_PROOF_CHANNEL_ID}>, "
-                "then press **Participate in Campaign** again.",
                 ephemeral=True,
             )
             return
@@ -1795,14 +1753,6 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 # -----------------------------
 # Events
 # -----------------------------
-@client.event
-async def on_message(message: discord.Message):
-    await maybe_delete_blocked_believer_x_link(message)
-
-@client.event
-async def on_message_edit(before: discord.Message, after: discord.Message):
-    await maybe_delete_blocked_believer_x_link(after)
-
 @client.event
 async def on_ready():
     global PERSISTENT_VIEWS_REGISTERED
