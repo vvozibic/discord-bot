@@ -75,7 +75,12 @@ BELIEVER_ROLE_ID = int(
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
-BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES = {(2025, 8, 25)}
+BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES = {
+    (2025, 5, 13),
+    (2025, 5, 14),
+    (2025, 8, 25),
+}
+BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES_TEXT = "May 13, 2025, May 14, 2025, or August 25, 2025"
 BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
 **:moneybag:Rewards:**
@@ -973,7 +978,10 @@ async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
         return False, f"Could not find the Ascended role `<@&{BELIEVER_ROLE_ID}>` in this server."
 
     if member_has_blocked_believer_creation_date(member):
-        return False, "Discord accounts created on August 25, 2025 are not eligible for this campaign."
+        return False, (
+            "Discord accounts created on "
+            f"{BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES_TEXT} are not eligible for this campaign."
+        )
 
     if role in member.roles:
         return True, f"You already have {role.mention}."
@@ -1155,7 +1163,8 @@ class BelieverCampaignView(discord.ui.View):
                 else "I couldn't delete your proof message. Please check my **Manage Messages** permission."
             )
             await interaction.followup.send(
-                "Discord accounts created on August 25, 2025 are not eligible for this campaign. "
+                "Discord accounts created on "
+                f"{BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES_TEXT} are not eligible for this campaign. "
                 f"{delete_message}",
                 ephemeral=True,
             )
