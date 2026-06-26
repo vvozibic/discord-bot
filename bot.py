@@ -933,7 +933,21 @@ def member_has_blocked_believer_creation_date(member: discord.Member) -> bool:
         return False
     return (created_at.year, created_at.month, created_at.day) in BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES
 
-async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool]:
+async def delete_believer_proof_message(message: discord.Message | None) -> bool:
+    if message is None:
+        return False
+
+    try:
+        await message.delete(reason="Ineligible Ascended campaign account creation date")
+    except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+        return False
+
+    return True
+
+async def find_member_believer_x_link(
+    channel,
+    user_id: int,
+) -> tuple[bool, bool, discord.Message | None]:
     saw_member_message = False
 
     async for message in channel.history(
@@ -946,9 +960,9 @@ async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool
 
         saw_member_message = True
         if message_has_x_link(message):
-            return True, saw_member_message
+            return True, saw_member_message, message
 
-    return False, saw_member_message
+    return False, saw_member_message, None
 
 async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
     if not BELIEVER_ROLE_ID:
@@ -1096,7 +1110,7 @@ class BelieverCampaignView(discord.ui.View):
             return
 
         try:
-            has_x_link, saw_member_message = await find_member_believer_x_link(
+            has_x_link, saw_member_message, proof_message = await find_member_believer_x_link(
                 channel,
                 interaction.user.id,
             )
@@ -1129,6 +1143,20 @@ class BelieverCampaignView(discord.ui.View):
 
             await interaction.followup.send(
                 not_found_message,
+                ephemeral=True,
+            )
+            return
+
+        if member_has_blocked_believer_creation_date(interaction.user):
+            proof_deleted = await delete_believer_proof_message(proof_message)
+            delete_message = (
+                "Your proof message has been deleted."
+                if proof_deleted
+                else "I couldn't delete your proof message. Please check my **Manage Messages** permission."
+            )
+            await interaction.followup.send(
+                "Discord accounts created on August 25, 2025 are not eligible for this campaign. "
+                f"{delete_message}",
                 ephemeral=True,
             )
             return
