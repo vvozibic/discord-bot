@@ -938,6 +938,23 @@ def message_has_blocked_x_link(message: discord.Message) -> bool:
         for match in BELIEVER_X_STATUS_LINK_RE.finditer(content)
     )
 
+async def maybe_delete_blocked_believer_x_link(message: discord.Message) -> bool:
+    if not BELIEVER_PROOF_CHANNEL_ID:
+        return False
+    if message.author.bot:
+        return False
+    if getattr(message.channel, "id", None) != BELIEVER_PROOF_CHANNEL_ID:
+        return False
+    if not message_has_blocked_x_link(message):
+        return False
+
+    try:
+        await message.delete(reason="Blocked Ascended campaign proof link")
+    except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+        return False
+
+    return True
+
 async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool, bool]:
     saw_member_message = False
     saw_valid_x_link = False
@@ -1778,6 +1795,14 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 # -----------------------------
 # Events
 # -----------------------------
+@client.event
+async def on_message(message: discord.Message):
+    await maybe_delete_blocked_believer_x_link(message)
+
+@client.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    await maybe_delete_blocked_believer_x_link(after)
+
 @client.event
 async def on_ready():
     global PERSISTENT_VIEWS_REGISTERED
