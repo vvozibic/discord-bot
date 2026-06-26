@@ -75,6 +75,7 @@ BELIEVER_ROLE_ID = int(
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
+BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES = {(2025, 8, 25)}
 BELIEVER_CAMPAIGN_MESSAGE = """# 72-HOUR CAMPAIGN with $1,000 USDT POOL + UNIQ ROLE
 
 **:moneybag:Rewards:**
@@ -926,6 +927,12 @@ async def get_believer_proof_channel(guild: discord.Guild):
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
+def member_has_blocked_believer_creation_date(member: discord.Member) -> bool:
+    created_at = getattr(member, "created_at", None)
+    if created_at is None:
+        return False
+    return (created_at.year, created_at.month, created_at.day) in BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES
+
 async def find_member_believer_x_link(channel, user_id: int) -> tuple[bool, bool]:
     saw_member_message = False
 
@@ -950,6 +957,9 @@ async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
     role = member.guild.get_role(BELIEVER_ROLE_ID)
     if role is None:
         return False, f"Could not find the Ascended role `<@&{BELIEVER_ROLE_ID}>` in this server."
+
+    if member_has_blocked_believer_creation_date(member):
+        return False, "Discord accounts created on August 25, 2025 are not eligible for this campaign."
 
     if role in member.roles:
         return True, f"You already have {role.mention}."
