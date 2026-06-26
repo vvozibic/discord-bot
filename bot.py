@@ -973,6 +973,101 @@ async def build_believer_user_ids_csv(channel, after: datetime) -> tuple[bytes, 
 
     return output.getvalue().encode("utf-8-sig"), len(users), scanned_messages
 
+async def build_believer_role_check_csv(
+    guild: discord.Guild,
+    channel,
+    role_id: int,
+    after: datetime,
+) -> tuple[bytes, dict[str, int]]:
+    users: dict[int, dict[str, object]] = {}
+    scanned_messages = 0
+
+    async for message in channel.history(
+        limit=None,
+        after=after,
+        oldest_first=True,
+    ):
+        scanned_messages += 1
+        if getattr(message.author, "bot", False):
+            continue
+
+        user_id = int(message.author.id)
+        user = users.setdefault(
+            user_id,
+            {
+                "user_id": user_id,
+                "username": str(message.author),
+                "message_count": 0,
+                "currently_in_guild": True,
+                "has_role": False,
+                "first_message_at": message.created_at,
+                "last_message_at": message.created_at,
+            },
+        )
+        user["message_count"] = int(user["message_count"]) + 1
+        user["last_message_at"] = message.created_at
+
+    for user_id, user in users.items():
+        try:
+            member = await guild.fetch_member(user_id)
+        except discord.NotFound:
+            user["currently_in_guild"] = False
+            user["has_role"] = False
+            continue
+
+        user["username"] = str(member)
+        user["currently_in_guild"] = True
+        user["has_role"] = any(role.id == role_id for role in member.roles)
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "user_id",
+            "username",
+            "message_count",
+            "currently_in_guild",
+            "has_role",
+            "first_message_at_utc",
+            "last_message_at_utc",
+        ],
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for user_id in sorted(users):
+        user = users[user_id]
+        first_message_at = user["first_message_at"]
+        last_message_at = user["last_message_at"]
+        writer.writerow(
+            {
+                "user_id": user["user_id"],
+                "username": user["username"],
+                "message_count": user["message_count"],
+                "currently_in_guild": user["currently_in_guild"],
+                "has_role": user["has_role"],
+                "first_message_at_utc": first_message_at.isoformat() if isinstance(first_message_at, datetime) else "",
+                "last_message_at_utc": last_message_at.isoformat() if isinstance(last_message_at, datetime) else "",
+            }
+        )
+
+    total_users = len(users)
+    with_role = sum(1 for user in users.values() if bool(user["has_role"]))
+    left_guild = sum(1 for user in users.values() if not bool(user["currently_in_guild"]))
+    without_role = sum(
+        1
+        for user in users.values()
+        if bool(user["currently_in_guild"]) and not bool(user["has_role"])
+    )
+    stats = {
+        "scanned_messages": scanned_messages,
+        "total_users": total_users,
+        "with_role": with_role,
+        "without_role": without_role,
+        "left_guild": left_guild,
+    }
+
+    return output.getvalue().encode("utf-8-sig"), stats
+
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
@@ -1699,6 +1794,88 @@ async def exportcampaignuserids_cmd(interaction: discord.Interaction):
             f"Exported {unique_user_count} unique user IDs from "
             f"{scanned_message_count} messages in <#{BELIEVER_PROOF_CHANNEL_ID}> "
             "over the last 24 hours."
+        ),
+        file=file,
+        ephemeral=True,
+    )
+
+@tree.command(name="exportcampaignrolecheck", description="Export last 3 days campaign users with Ascended role status")
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to export campaign role status.",
+            ephemeral=True,
+        )
+        return
+
+    if not BELIEVER_PROOF_CHANNEL_ID:
+        await interaction.response.send_message(
+            "Proof channel ID is not configured.",
+            ephemeral=True,
+        )
+        return
+
+    if not BELIEVER_ROLE_ID:
+        await interaction.response.send_message(
+            "Ascended role ID is not configured.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    channel = await get_believer_proof_channel(interaction.guild)
+    if channel is None or not hasattr(channel, "history"):
+        await interaction.followup.send(
+            f"I can't access <#{BELIEVER_PROOF_CHANNEL_ID}> to export campaign role status.",
+            ephemeral=True,
+        )
+        return
+
+    exported_at = datetime.now(timezone.utc)
+    after = exported_at - timedelta(days=3)
+
+    try:
+        csv_bytes, stats = await build_believer_role_check_csv(
+            interaction.guild,
+            channel,
+            BELIEVER_ROLE_ID,
+            after,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "I need permission to read message history and fetch members for this export.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord rejected the campaign role export: {exc}",
+            ephemeral=True,
+        )
+        return
+
+    file = discord.File(
+        io.BytesIO(csv_bytes),
+        filename=f"campaign_role_check_last_3d_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
+    )
+    await interaction.followup.send(
+        (
+            f"Users who messaged in <#{BELIEVER_PROOF_CHANNEL_ID}> during the last 3 days: "
+            f"{stats['total_users']}\n"
+            f"Have <@&{BELIEVER_ROLE_ID}>: {stats['with_role']}\n"
+            f"In guild without role: {stats['without_role']}\n"
+            f"No longer in guild: {stats['left_guild']}\n"
+            f"Messages scanned: {stats['scanned_messages']}"
         ),
         file=file,
         ephemeral=True,
