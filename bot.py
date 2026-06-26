@@ -1,6 +1,7 @@
 import discord
 import asyncio
 import re
+import csv
 import config
 import easyocr
 import torch
@@ -16,7 +17,7 @@ import base64
 import aiohttp
 import hmac
 import database
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from discord.ui.media_gallery import MediaGalleryItem
 from profile_card import (
     CARD_ATTACHMENT_NAME,
@@ -929,6 +930,49 @@ async def get_believer_campaign_channel(guild: discord.Guild):
 async def get_believer_proof_channel(guild: discord.Guild):
     return await get_believer_channel(guild, BELIEVER_PROOF_CHANNEL_ID)
 
+async def build_believer_user_ids_csv(channel, after: datetime) -> tuple[bytes, int, int]:
+    users: dict[int, dict[str, object]] = {}
+    scanned_messages = 0
+
+    async for message in channel.history(
+        limit=None,
+        after=after,
+        oldest_first=True,
+    ):
+        scanned_messages += 1
+        if getattr(message.author, "bot", False):
+            continue
+
+        user_id = int(message.author.id)
+        user = users.setdefault(
+            user_id,
+            {
+                "message_count": 0,
+                "first_message_at": message.created_at,
+                "last_message_at": message.created_at,
+            },
+        )
+        user["message_count"] = int(user["message_count"]) + 1
+        user["last_message_at"] = message.created_at
+
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(["user_id", "message_count", "first_message_at_utc", "last_message_at_utc"])
+    for user_id in sorted(users):
+        user = users[user_id]
+        first_message_at = user["first_message_at"]
+        last_message_at = user["last_message_at"]
+        writer.writerow(
+            [
+                user_id,
+                user["message_count"],
+                first_message_at.isoformat() if isinstance(first_message_at, datetime) else "",
+                last_message_at.isoformat() if isinstance(last_message_at, datetime) else "",
+            ]
+        )
+
+    return output.getvalue().encode("utf-8-sig"), len(users), scanned_messages
+
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
@@ -1587,6 +1631,76 @@ async def postbelievercampaign_cmd(interaction: discord.Interaction):
 
     await interaction.followup.send(
         f"Ascended campaign announcement posted: {message.jump_url}",
+        ephemeral=True,
+    )
+
+@tree.command(name="exportcampaignuserids", description="Export campaign proof user IDs from the last 24 hours")
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def exportcampaignuserids_cmd(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to export campaign user IDs.",
+            ephemeral=True,
+        )
+        return
+
+    if not BELIEVER_PROOF_CHANNEL_ID:
+        await interaction.response.send_message(
+            "Proof channel ID is not configured.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    channel = await get_believer_proof_channel(interaction.guild)
+    if channel is None or not hasattr(channel, "history"):
+        await interaction.followup.send(
+            f"I can't access <#{BELIEVER_PROOF_CHANNEL_ID}> to export campaign user IDs.",
+            ephemeral=True,
+        )
+        return
+
+    exported_at = datetime.now(timezone.utc)
+    after = exported_at - timedelta(hours=24)
+
+    try:
+        csv_bytes, unique_user_count, scanned_message_count = await build_believer_user_ids_csv(
+            channel,
+            after,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            f"I need **Read Message History** permission in <#{BELIEVER_PROOF_CHANNEL_ID}>.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord rejected the message history export: {exc}",
+            ephemeral=True,
+        )
+        return
+
+    file = discord.File(
+        io.BytesIO(csv_bytes),
+        filename=f"campaign_user_ids_last_24h_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
+    )
+    await interaction.followup.send(
+        (
+            f"Exported {unique_user_count} unique user IDs from "
+            f"{scanned_message_count} messages in <#{BELIEVER_PROOF_CHANNEL_ID}> "
+            "over the last 24 hours."
+        ),
+        file=file,
         ephemeral=True,
     )
 
