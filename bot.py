@@ -973,6 +973,26 @@ async def build_believer_user_ids_csv(channel, after: datetime) -> tuple[bytes, 
 
     return output.getvalue().encode("utf-8-sig"), len(users), scanned_messages
 
+async def fetch_member_for_role_export(
+    guild: discord.Guild,
+    user_id: int,
+    *,
+    max_attempts: int = 3,
+) -> tuple[discord.Member | None, str]:
+    for attempt in range(max_attempts):
+        try:
+            return await guild.fetch_member(user_id), "ok"
+        except discord.NotFound:
+            return None, "not_found"
+        except discord.HTTPException as exc:
+            status = getattr(exc, "status", None)
+            if status in {500, 502, 503, 504} and attempt < max_attempts - 1:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            return None, f"http_{status or 'unknown'}"
+
+    return None, "http_unknown"
+
 async def build_believer_role_check_csv(
     guild: discord.Guild,
     channel,
@@ -998,8 +1018,9 @@ async def build_believer_role_check_csv(
                 "user_id": user_id,
                 "username": str(message.author),
                 "message_count": 0,
-                "currently_in_guild": True,
-                "has_role": False,
+                "currently_in_guild": "unknown",
+                "has_role": "unknown",
+                "member_fetch_status": "pending",
                 "first_message_at": message.created_at,
                 "last_message_at": message.created_at,
             },
@@ -1008,11 +1029,16 @@ async def build_believer_role_check_csv(
         user["last_message_at"] = message.created_at
 
     for user_id, user in users.items():
-        try:
-            member = await guild.fetch_member(user_id)
-        except discord.NotFound:
+        member, fetch_status = await fetch_member_for_role_export(guild, user_id)
+        user["member_fetch_status"] = fetch_status
+
+        if fetch_status == "not_found":
             user["currently_in_guild"] = False
             user["has_role"] = False
+            continue
+        if member is None:
+            user["currently_in_guild"] = "unknown"
+            user["has_role"] = "unknown"
             continue
 
         user["username"] = str(member)
@@ -1028,6 +1054,7 @@ async def build_believer_role_check_csv(
             "message_count",
             "currently_in_guild",
             "has_role",
+            "member_fetch_status",
             "first_message_at_utc",
             "last_message_at_utc",
         ],
@@ -1045,18 +1072,24 @@ async def build_believer_role_check_csv(
                 "message_count": user["message_count"],
                 "currently_in_guild": user["currently_in_guild"],
                 "has_role": user["has_role"],
+                "member_fetch_status": user["member_fetch_status"],
                 "first_message_at_utc": first_message_at.isoformat() if isinstance(first_message_at, datetime) else "",
                 "last_message_at_utc": last_message_at.isoformat() if isinstance(last_message_at, datetime) else "",
             }
         )
 
     total_users = len(users)
-    with_role = sum(1 for user in users.values() if bool(user["has_role"]))
-    left_guild = sum(1 for user in users.values() if not bool(user["currently_in_guild"]))
+    with_role = sum(1 for user in users.values() if user["has_role"] is True)
+    left_guild = sum(1 for user in users.values() if user["member_fetch_status"] == "not_found")
     without_role = sum(
         1
         for user in users.values()
-        if bool(user["currently_in_guild"]) and not bool(user["has_role"])
+        if user["currently_in_guild"] is True and user["has_role"] is False
+    )
+    lookup_failed = sum(
+        1
+        for user in users.values()
+        if str(user["member_fetch_status"]).startswith("http_")
     )
     stats = {
         "scanned_messages": scanned_messages,
@@ -1064,6 +1097,7 @@ async def build_believer_role_check_csv(
         "with_role": with_role,
         "without_role": without_role,
         "left_guild": left_guild,
+        "lookup_failed": lookup_failed,
     }
 
     return output.getvalue().encode("utf-8-sig"), stats
@@ -1875,6 +1909,7 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
             f"Have <@&{BELIEVER_ROLE_ID}>: {stats['with_role']}\n"
             f"In guild without role: {stats['without_role']}\n"
             f"No longer in guild: {stats['left_guild']}\n"
+            f"Member lookups failed: {stats['lookup_failed']}\n"
             f"Messages scanned: {stats['scanned_messages']}"
         ),
         file=file,
