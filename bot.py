@@ -76,6 +76,10 @@ BELIEVER_ROLE_ID = int(
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
+BELIEVER_X_PROOF_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?x\.com/([A-Za-z0-9_]{1,15})/status/(\d+)",
+    re.IGNORECASE,
+)
 BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES = {
     (2025, 5, 13),
     (2025, 5, 14),
@@ -1105,28 +1109,98 @@ async def build_believer_role_check_csv(
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
+def extract_believer_x_proofs(message: discord.Message) -> list[tuple[str, str]]:
+    content = message.content or ""
+    return [
+        (match.group(1).lower(), match.group(2))
+        for match in BELIEVER_X_PROOF_RE.finditer(content)
+    ]
+
+async def find_duplicate_believer_x_proof(
+    channel,
+    message: discord.Message,
+) -> tuple[str, str, discord.Message] | None:
+    proofs = extract_believer_x_proofs(message)
+    if not proofs:
+        return None
+
+    current_author_id = getattr(message.author, "id", None)
+    current_timestamp = message.edited_at or message.created_at
+    proof_status_ids = {status_id for _, status_id in proofs}
+    proof_handles_by_status_id = {status_id: handle for handle, status_id in proofs}
+
+    async for existing_message in channel.history(
+        limit=None,
+        after=BELIEVER_ACTIVITY_AFTER,
+        oldest_first=False,
+    ):
+        if existing_message.id == message.id:
+            continue
+        if getattr(existing_message.author, "id", None) == current_author_id:
+            continue
+        if existing_message.created_at >= current_timestamp:
+            continue
+
+        for _, existing_status_id in extract_believer_x_proofs(existing_message):
+            if existing_status_id in proof_status_ids:
+                return (
+                    proof_handles_by_status_id.get(existing_status_id, ""),
+                    existing_status_id,
+                    existing_message,
+                )
+
+    return None
+
 def member_has_blocked_believer_creation_date(member: discord.Member) -> bool:
     created_at = getattr(member, "created_at", None)
     if created_at is None:
         return False
     return (created_at.year, created_at.month, created_at.day) in BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES
 
-async def delete_believer_proof_message(message: discord.Message | None) -> bool:
+async def delete_believer_proof_message(
+    message: discord.Message | None,
+    *,
+    reason: str = "Ineligible Ascended campaign proof",
+) -> bool:
     if message is None:
         return False
 
     try:
-        await message.delete(reason="Ineligible Ascended campaign account creation date")
+        await message.delete(reason=reason)
     except (discord.Forbidden, discord.NotFound, discord.HTTPException):
         return False
 
     return True
 
+async def maybe_delete_duplicate_believer_x_proof(message: discord.Message) -> bool:
+    if not BELIEVER_PROOF_CHANNEL_ID:
+        return False
+    if getattr(message.author, "bot", False):
+        return False
+    if getattr(message.channel, "id", None) != BELIEVER_PROOF_CHANNEL_ID:
+        return False
+    if not extract_believer_x_proofs(message):
+        return False
+
+    try:
+        duplicate = await find_duplicate_believer_x_proof(message.channel, message)
+    except (discord.Forbidden, discord.HTTPException):
+        return False
+
+    if duplicate is None:
+        return False
+
+    return await delete_believer_proof_message(
+        message,
+        reason="Duplicate Ascended campaign X proof link",
+    )
+
 async def find_member_believer_x_link(
     channel,
     user_id: int,
-) -> tuple[bool, bool, discord.Message | None]:
+) -> tuple[bool, bool, discord.Message | None, tuple[discord.Message, str, str, discord.Message] | None]:
     saw_member_message = False
+    duplicate_proof = None
 
     async for message in channel.history(
         limit=None,
@@ -1138,9 +1212,15 @@ async def find_member_believer_x_link(
 
         saw_member_message = True
         if message_has_x_link(message):
-            return True, saw_member_message, message
+            duplicate = await find_duplicate_believer_x_proof(channel, message)
+            if duplicate is not None:
+                handle, status_id, original_message = duplicate
+                if duplicate_proof is None:
+                    duplicate_proof = (message, handle, status_id, original_message)
+                continue
+            return True, saw_member_message, message, None
 
-    return False, saw_member_message, None
+    return False, saw_member_message, None, duplicate_proof
 
 async def assign_believer_role(member: discord.Member) -> tuple[bool, str]:
     if not BELIEVER_ROLE_ID:
@@ -1291,7 +1371,7 @@ class BelieverCampaignView(discord.ui.View):
             return
 
         try:
-            has_x_link, saw_member_message, proof_message = await find_member_believer_x_link(
+            has_x_link, saw_member_message, proof_message, duplicate_proof = await find_member_believer_x_link(
                 channel,
                 interaction.user.id,
             )
@@ -1304,6 +1384,25 @@ class BelieverCampaignView(discord.ui.View):
         except discord.HTTPException as exc:
             await interaction.followup.send(
                 f"Discord rejected the message history check: {exc}",
+                ephemeral=True,
+            )
+            return
+
+        if duplicate_proof is not None:
+            duplicate_message, handle, status_id, original_message = duplicate_proof
+            proof_deleted = await delete_believer_proof_message(
+                duplicate_message,
+                reason="Duplicate Ascended campaign X proof link",
+            )
+            delete_message = (
+                "Your duplicate proof message has been deleted."
+                if proof_deleted
+                else "I couldn't delete your duplicate proof message. Please check my **Manage Messages** permission."
+            )
+            await interaction.followup.send(
+                "That X post link was already used by another participant, "
+                f"so it is not eligible for this campaign. Detected `x.com/{handle}/status/{status_id}`. "
+                f"{delete_message} Share your own X post link, then press **Participate in Campaign** again.",
                 ephemeral=True,
             )
             return
@@ -2126,6 +2225,14 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 # -----------------------------
 # Events
 # -----------------------------
+@client.event
+async def on_message(message: discord.Message):
+    await maybe_delete_duplicate_believer_x_proof(message)
+
+@client.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    await maybe_delete_duplicate_believer_x_proof(after)
+
 @client.event
 async def on_ready():
     global PERSISTENT_VIEWS_REGISTERED
