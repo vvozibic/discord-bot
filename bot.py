@@ -1932,7 +1932,7 @@ async def exportcampaignuserids_cmd(interaction: discord.Interaction):
         ephemeral=True,
     )
 
-@tree.command(name="exportcampaignrolecheck", description="Export last 3 days campaign users with Ascended role status")
+@tree.command(name="exportcampaignrolecheck", description="Export last 106 hours campaign users with Ascended role status")
 @discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
@@ -1975,7 +1975,7 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
         return
 
     exported_at = datetime.now(timezone.utc)
-    after = exported_at - timedelta(days=3)
+    after = exported_at - timedelta(hours=106)
 
     try:
         csv_bytes, stats = await build_believer_role_check_csv(
@@ -1999,11 +1999,11 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
 
     file = discord.File(
         io.BytesIO(csv_bytes),
-        filename=f"campaign_role_check_last_3d_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
+        filename=f"campaign_role_check_last_106h_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
     )
     await interaction.followup.send(
         (
-            f"Users who messaged in <#{BELIEVER_PROOF_CHANNEL_ID}> during the last 3 days: "
+            f"Users who messaged in <#{BELIEVER_PROOF_CHANNEL_ID}> during the last 106 hours: "
             f"{stats['total_users']}\n"
             f"Have <@&{BELIEVER_ROLE_ID}>: {stats['with_role']}\n"
             f"In guild without role: {stats['without_role']}\n"
