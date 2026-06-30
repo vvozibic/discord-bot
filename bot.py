@@ -1063,7 +1063,7 @@ def apply_member_role_export_status(
     role_id: int,
     fetch_status: str,
 ) -> None:
-    user["username"] = str(member)
+    user["nickname"] = member.display_name
     user["currently_in_guild"] = True
     user["has_role"] = any(role.id == role_id for role in member.roles)
     user["member_fetch_status"] = fetch_status
@@ -1092,7 +1092,7 @@ async def build_believer_role_check_csv(
             user_id,
             {
                 "user_id": user_id,
-                "username": str(message.author),
+                "nickname": getattr(message.author, "display_name", str(message.author)),
                 "message_count": 0,
                 "currently_in_guild": "unknown",
                 "has_role": "unknown",
@@ -1129,7 +1129,7 @@ async def build_believer_role_check_csv(
         output,
         fieldnames=[
             "user_id",
-            "username",
+            "nickname",
             "message_count",
             "currently_in_guild",
             "has_role",
@@ -1147,7 +1147,7 @@ async def build_believer_role_check_csv(
         writer.writerow(
             {
                 "user_id": user["user_id"],
-                "username": user["username"],
+                "nickname": user["nickname"],
                 "message_count": user["message_count"],
                 "currently_in_guild": user["currently_in_guild"],
                 "has_role": user["has_role"],
@@ -2149,7 +2149,7 @@ async def export_150_hours_no_duplicates_links_cmd(interaction: discord.Interact
         ephemeral=True,
     )
 
-@tree.command(name="exportcampaignrolecheck", description="Export last 128 hours campaign users with Ascended role status")
+@tree.command(name="exportcampaignrolecheck", description="Export last 128 hours campaign nicknames with Ascended role status")
 @discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
