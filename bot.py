@@ -1006,6 +1006,29 @@ async def build_believer_no_duplicate_user_ids_csv(
     csv_bytes = campaign_link_report.build_user_id_csv(user_ids)
     return csv_bytes, stats
 
+async def build_believer_no_duplicate_user_links_csv(
+    channel,
+    after: datetime,
+) -> tuple[bytes, dict[str, int]]:
+    messages: list[tuple[int, str]] = []
+    scanned_messages = 0
+
+    async for message in channel.history(
+        limit=None,
+        after=after,
+        oldest_first=True,
+    ):
+        scanned_messages += 1
+        if getattr(message.author, "bot", False):
+            continue
+
+        messages.append((int(message.author.id), message.content or ""))
+
+    rows, stats = campaign_link_report.find_no_duplicate_x_proof_user_link_rows(messages)
+    stats["scanned_messages"] = scanned_messages
+    csv_bytes = campaign_link_report.build_user_link_csv(rows)
+    return csv_bytes, stats
+
 async def fetch_member_for_role_export(
     guild: discord.Guild,
     user_id: int,
@@ -2047,6 +2070,79 @@ async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
             f"Excluded for reused X status links: {stats['disqualified_user_count']}\n"
             f"Unique X status links: {stats['unique_status_count']}\n"
             f"Exported eligible Discord IDs: {stats['eligible_user_count']}"
+        ),
+        file=file,
+        ephemeral=True,
+    )
+
+@tree.command(name="108h-no-duplicates-links", description="Export 108h eligible users with their X proof links")
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def export_108_hours_no_duplicates_links_cmd(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to export campaign user links.",
+            ephemeral=True,
+        )
+        return
+
+    if not BELIEVER_PROOF_CHANNEL_ID:
+        await interaction.response.send_message(
+            "Proof channel ID is not configured.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    channel = await get_believer_proof_channel(interaction.guild)
+    if channel is None or not hasattr(channel, "history"):
+        await interaction.followup.send(
+            f"I can't access <#{BELIEVER_PROOF_CHANNEL_ID}> to export campaign user links.",
+            ephemeral=True,
+        )
+        return
+
+    exported_at = datetime.now(timezone.utc)
+    after = exported_at - timedelta(hours=BELIEVER_NO_DUPLICATE_EXPORT_HOURS)
+
+    try:
+        csv_bytes, stats = await build_believer_no_duplicate_user_links_csv(
+            channel,
+            after,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            f"I need **Read Message History** permission in <#{BELIEVER_PROOF_CHANNEL_ID}>.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord rejected the no-duplicate campaign link export: {exc}",
+            ephemeral=True,
+        )
+        return
+
+    file = discord.File(
+        io.BytesIO(csv_bytes),
+        filename=f"campaign_no_duplicate_user_links_last_108h_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
+    )
+    await interaction.followup.send(
+        (
+            f"Scanned {stats['scanned_messages']} messages in <#{BELIEVER_PROOF_CHANNEL_ID}> "
+            f"over the last {BELIEVER_NO_DUPLICATE_EXPORT_HOURS} hours.\n"
+            f"Users with X proof links: {stats['proof_user_count']}\n"
+            f"Excluded for reused X status links: {stats['disqualified_user_count']}\n"
+            f"Unique X status links: {stats['unique_status_count']}\n"
+            f"Exported eligible Discord IDs with links: {stats['eligible_user_count']}"
         ),
         file=file,
         ephemeral=True,
