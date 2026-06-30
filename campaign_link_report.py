@@ -12,6 +12,11 @@ X_STATUS_PROOF_RE = re.compile(
     r"(?:https?://)?(?:www\.)?x\.com/([A-Za-z0-9_]{1,15})/status/(\d+)",
     re.IGNORECASE,
 )
+URL_RE = re.compile(
+    r"https?://[^\s<>\"]+|(?:www\.)?x\.com/[^\s<>\"]+",
+    re.IGNORECASE,
+)
+TRAILING_LINK_PUNCTUATION = ".,!?;:)]}'\""
 
 
 def extract_x_status_proofs(content: str) -> list[tuple[str, str]]:
@@ -20,6 +25,18 @@ def extract_x_status_proofs(content: str) -> list[tuple[str, str]]:
         (match.group(1).lower(), match.group(2))
         for match in X_STATUS_PROOF_RE.finditer(content or "")
     ]
+
+
+def extract_links(content: str) -> list[str]:
+    """Return cleaned HTTP(S) and X links from content."""
+    links = []
+    for match in URL_RE.finditer(content or ""):
+        link = match.group(0).rstrip(TRAILING_LINK_PUNCTUATION)
+        if link.lower().startswith(("x.com/", "www.x.com/")):
+            link = f"https://{link}"
+        if link:
+            links.append(link)
+    return links
 
 
 def find_no_duplicate_x_proof_user_ids(
@@ -67,27 +84,31 @@ def find_no_duplicate_x_proof_user_ids(
 def find_no_duplicate_x_proof_user_link_rows(
     messages: Iterable[tuple[int | str, str]],
 ) -> tuple[list[dict[str, str | int]], dict[str, int]]:
-    """Return eligible users with the X status links they posted."""
+    """Return eligible users with all links they posted."""
     status_owners: dict[str, str] = {}
-    status_handles: dict[str, str] = {}
-    user_status_ids: dict[str, set[str]] = {}
+    user_links: dict[str, list[str]] = {}
+    user_seen_links: dict[str, set[str]] = {}
     users_with_proofs: set[str] = set()
     disqualified_users: set[str] = set()
 
     for author_id, content in messages:
         author_id = str(author_id)
+        for link in extract_links(content):
+            user_seen_links.setdefault(author_id, set())
+            if link in user_seen_links[author_id]:
+                continue
+            user_seen_links[author_id].add(link)
+            user_links.setdefault(author_id, []).append(link)
+
         proofs = extract_x_status_proofs(content)
         if not proofs:
             continue
 
         users_with_proofs.add(author_id)
-        user_status_ids.setdefault(author_id, set())
-        for handle, status_id in proofs:
-            status_handles.setdefault(status_id, handle)
+        for _, status_id in proofs:
             owner_id = status_owners.setdefault(status_id, author_id)
             if owner_id != author_id:
                 disqualified_users.add(author_id)
-            user_status_ids[author_id].add(status_id)
 
     eligible_users = users_with_proofs - disqualified_users
     sorted_user_ids = sorted(
@@ -96,16 +117,12 @@ def find_no_duplicate_x_proof_user_link_rows(
     )
     rows = []
     for user_id in sorted_user_ids:
-        status_ids = sorted(user_status_ids.get(user_id, set()), key=int)
-        links = [
-            f"https://x.com/{status_handles.get(status_id, '')}/status/{status_id}"
-            for status_id in status_ids
-        ]
+        links = user_links.get(user_id, [])
         rows.append(
             {
                 "user_id": user_id,
-                "x_status_count": len(links),
-                "x_status_links": " ".join(links),
+                "link_count": len(links),
+                "links": " ".join(links),
             }
         )
 
@@ -129,11 +146,11 @@ def build_user_id_csv(user_ids: Iterable[int | str]) -> bytes:
 
 
 def build_user_link_csv(rows: Iterable[dict[str, str | int]]) -> bytes:
-    """Build a CSV with user IDs and their X status links."""
+    """Build a CSV with user IDs and all links they posted."""
     output = io.StringIO()
     writer = csv.DictWriter(
         output,
-        fieldnames=["user_id", "x_status_count", "x_status_links"],
+        fieldnames=["user_id", "link_count", "links"],
         lineterminator="\n",
     )
     writer.writeheader()

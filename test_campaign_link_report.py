@@ -68,18 +68,32 @@ class CampaignLinkReportTests(unittest.TestCase):
 
         self.assertEqual(proofs, [("alice", "111"), ("bob", "222")])
 
+    def test_extract_links_includes_http_urls_and_bare_x_links(self):
+        links = campaign_link_report.extract_links(
+            "Links: x.com/alice/status/111, https://example.com/a?b=1 and <https://t.me/MindoAI>"
+        )
+
+        self.assertEqual(
+            links,
+            [
+                "https://x.com/alice/status/111",
+                "https://example.com/a?b=1",
+                "https://t.me/MindoAI",
+            ],
+        )
+
     def test_csv_contains_only_user_id_column(self):
         csv_bytes = campaign_link_report.build_user_id_csv(["100", "200"])
 
         self.assertEqual(csv_bytes.decode("utf-8-sig"), "user_id\n100\n200\n")
 
-    def test_link_rows_include_eligible_users_and_their_status_links(self):
+    def test_link_rows_include_eligible_users_and_all_their_links(self):
         rows, stats = campaign_link_report.find_no_duplicate_x_proof_user_link_rows(
             [
-                ("100", "https://x.com/alice/status/111?s=20"),
+                ("100", "https://x.com/alice/status/111?s=20 https://example.com/one"),
                 ("100", "https://www.x.com/Alice/status/222/"),
                 ("200", "https://x.com/alice/status/111?ref=test"),
-                ("300", "https://x.com/charlie/status/333"),
+                ("300", "https://x.com/charlie/status/333 https://t.me/MindoAI"),
             ]
         )
 
@@ -88,13 +102,13 @@ class CampaignLinkReportTests(unittest.TestCase):
             [
                 {
                     "user_id": "100",
-                    "x_status_count": 2,
-                    "x_status_links": "https://x.com/alice/status/111 https://x.com/alice/status/222",
+                    "link_count": 3,
+                    "links": "https://x.com/alice/status/111?s=20 https://example.com/one https://www.x.com/Alice/status/222/",
                 },
                 {
                     "user_id": "300",
-                    "x_status_count": 1,
-                    "x_status_links": "https://x.com/charlie/status/333",
+                    "link_count": 2,
+                    "links": "https://x.com/charlie/status/333 https://t.me/MindoAI",
                 },
             ],
         )
@@ -105,15 +119,15 @@ class CampaignLinkReportTests(unittest.TestCase):
             [
                 {
                     "user_id": "100",
-                    "x_status_count": 1,
-                    "x_status_links": "https://x.com/alice/status/111",
+                    "link_count": 1,
+                    "links": "https://x.com/alice/status/111",
                 }
             ]
         )
 
         self.assertEqual(
             csv_bytes.decode("utf-8-sig"),
-            "user_id,x_status_count,x_status_links\n"
+            "user_id,link_count,links\n"
             "100,1,https://x.com/alice/status/111\n",
         )
 
