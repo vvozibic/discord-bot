@@ -80,6 +80,14 @@ BELIEVER_X_PROOF_RE = re.compile(
     r"(?:https?://)?(?:www\.)?x\.com/([A-Za-z0-9_]{1,15})/status/(\d+)",
     re.IGNORECASE,
 )
+BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS = float(
+    getattr(
+        config,
+        "BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS",
+        os.getenv("BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS", "0.35"),
+    )
+    or 0
+)
 BELIEVER_BLOCKED_ACCOUNT_CREATION_DATES = {
     (2025, 5, 13),
     (2025, 5, 14),
@@ -983,6 +991,13 @@ async def fetch_member_for_role_export(
     *,
     max_attempts: int = 3,
 ) -> tuple[discord.Member | None, str]:
+    cached_member = guild.get_member(user_id)
+    if cached_member is not None:
+        return cached_member, "cache"
+
+    if BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS > 0:
+        await asyncio.sleep(BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS)
+
     for attempt in range(max_attempts):
         try:
             return await guild.fetch_member(user_id), "ok"
@@ -996,6 +1011,17 @@ async def fetch_member_for_role_export(
             return None, f"http_{status or 'unknown'}"
 
     return None, "http_unknown"
+
+def apply_member_role_export_status(
+    user: dict[str, object],
+    member: discord.Member,
+    role_id: int,
+    fetch_status: str,
+) -> None:
+    user["username"] = str(member)
+    user["currently_in_guild"] = True
+    user["has_role"] = any(role.id == role_id for role in member.roles)
+    user["member_fetch_status"] = fetch_status
 
 async def build_believer_role_check_csv(
     guild: discord.Guild,
@@ -1016,6 +1042,7 @@ async def build_believer_role_check_csv(
             continue
 
         user_id = int(message.author.id)
+        author = message.author
         user = users.setdefault(
             user_id,
             {
@@ -1031,8 +1058,13 @@ async def build_believer_role_check_csv(
         )
         user["message_count"] = int(user["message_count"]) + 1
         user["last_message_at"] = message.created_at
+        if isinstance(author, discord.Member):
+            apply_member_role_export_status(user, author, role_id, "message_member")
 
     for user_id, user in users.items():
+        if user["member_fetch_status"] != "pending":
+            continue
+
         member, fetch_status = await fetch_member_for_role_export(guild, user_id)
         user["member_fetch_status"] = fetch_status
 
@@ -1045,9 +1077,7 @@ async def build_believer_role_check_csv(
             user["has_role"] = "unknown"
             continue
 
-        user["username"] = str(member)
-        user["currently_in_guild"] = True
-        user["has_role"] = any(role.id == role_id for role in member.roles)
+        apply_member_role_export_status(user, member, role_id, fetch_status)
 
     output = io.StringIO()
     writer = csv.DictWriter(
