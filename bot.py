@@ -16,6 +16,7 @@ import hashlib
 import base64
 import aiohttp
 import hmac
+import campaign_link_report
 import database
 from datetime import datetime, timezone, timedelta
 from discord.ui.media_gallery import MediaGalleryItem
@@ -76,10 +77,7 @@ BELIEVER_ROLE_ID = int(
 BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
-BELIEVER_X_PROOF_RE = re.compile(
-    r"(?:https?://)?(?:www\.)?x\.com/([A-Za-z0-9_]{1,15})/status/(\d+)",
-    re.IGNORECASE,
-)
+BELIEVER_NO_DUPLICATE_EXPORT_HOURS = 108
 BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS = float(
     getattr(
         config,
@@ -985,6 +983,29 @@ async def build_believer_user_ids_csv(channel, after: datetime) -> tuple[bytes, 
 
     return output.getvalue().encode("utf-8-sig"), len(users), scanned_messages
 
+async def build_believer_no_duplicate_user_ids_csv(
+    channel,
+    after: datetime,
+) -> tuple[bytes, dict[str, int]]:
+    messages: list[tuple[int, str]] = []
+    scanned_messages = 0
+
+    async for message in channel.history(
+        limit=None,
+        after=after,
+        oldest_first=True,
+    ):
+        scanned_messages += 1
+        if getattr(message.author, "bot", False):
+            continue
+
+        messages.append((int(message.author.id), message.content or ""))
+
+    user_ids, stats = campaign_link_report.find_no_duplicate_x_proof_user_ids(messages)
+    stats["scanned_messages"] = scanned_messages
+    csv_bytes = campaign_link_report.build_user_id_csv(user_ids)
+    return csv_bytes, stats
+
 async def fetch_member_for_role_export(
     guild: discord.Guild,
     user_id: int,
@@ -1140,11 +1161,7 @@ def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
 def extract_believer_x_proofs(message: discord.Message) -> list[tuple[str, str]]:
-    content = message.content or ""
-    return [
-        (match.group(1).lower(), match.group(2))
-        for match in BELIEVER_X_PROOF_RE.finditer(content)
-    ]
+    return campaign_link_report.extract_x_status_proofs(message.content or "")
 
 async def find_duplicate_believer_x_proof(
     channel,
@@ -1957,6 +1974,79 @@ async def exportcampaignuserids_cmd(interaction: discord.Interaction):
             f"Exported {unique_user_count} unique user IDs from "
             f"{scanned_message_count} messages in <#{BELIEVER_PROOF_CHANNEL_ID}> "
             "over the last 24 hours."
+        ),
+        file=file,
+        ephemeral=True,
+    )
+
+@tree.command(name="108-hours-no-duplicates", description="Export 108h campaign users without reused X proofs")
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to export campaign user IDs.",
+            ephemeral=True,
+        )
+        return
+
+    if not BELIEVER_PROOF_CHANNEL_ID:
+        await interaction.response.send_message(
+            "Proof channel ID is not configured.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    channel = await get_believer_proof_channel(interaction.guild)
+    if channel is None or not hasattr(channel, "history"):
+        await interaction.followup.send(
+            f"I can't access <#{BELIEVER_PROOF_CHANNEL_ID}> to export campaign user IDs.",
+            ephemeral=True,
+        )
+        return
+
+    exported_at = datetime.now(timezone.utc)
+    after = exported_at - timedelta(hours=BELIEVER_NO_DUPLICATE_EXPORT_HOURS)
+
+    try:
+        csv_bytes, stats = await build_believer_no_duplicate_user_ids_csv(
+            channel,
+            after,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            f"I need **Read Message History** permission in <#{BELIEVER_PROOF_CHANNEL_ID}>.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord rejected the no-duplicate campaign export: {exc}",
+            ephemeral=True,
+        )
+        return
+
+    file = discord.File(
+        io.BytesIO(csv_bytes),
+        filename=f"campaign_no_duplicate_user_ids_last_108h_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
+    )
+    await interaction.followup.send(
+        (
+            f"Scanned {stats['scanned_messages']} messages in <#{BELIEVER_PROOF_CHANNEL_ID}> "
+            f"over the last {BELIEVER_NO_DUPLICATE_EXPORT_HOURS} hours.\n"
+            f"Users with X proof links: {stats['proof_user_count']}\n"
+            f"Excluded for reused X status links: {stats['disqualified_user_count']}\n"
+            f"Unique X status links: {stats['unique_status_count']}\n"
+            f"Exported eligible Discord IDs: {stats['eligible_user_count']}"
         ),
         file=file,
         ephemeral=True,
