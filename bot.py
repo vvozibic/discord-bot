@@ -78,6 +78,7 @@ BELIEVER_ACTIVITY_AFTER = datetime(2026, 6, 18, 22, 0, tzinfo=timezone.utc)
 BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
 BELIEVER_NO_DUPLICATE_EXPORT_HOURS = 108
+BELIEVER_NO_DUPLICATE_LINK_EXPORT_HOURS = 150
 BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS = float(
     getattr(
         config,
@@ -2075,10 +2076,10 @@ async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
         ephemeral=True,
     )
 
-@tree.command(name="108h-no-duplicates-links", description="Export 108h eligible users with their X proof links")
+@tree.command(name="150h-no-duplicates-links", description="Export 150h eligible users with all links")
 @discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
-async def export_108_hours_no_duplicates_links_cmd(interaction: discord.Interaction):
+async def export_150_hours_no_duplicates_links_cmd(interaction: discord.Interaction):
     if not interaction.guild or not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message(
             "This command can only be used in a server.",
@@ -2111,7 +2112,7 @@ async def export_108_hours_no_duplicates_links_cmd(interaction: discord.Interact
         return
 
     exported_at = datetime.now(timezone.utc)
-    after = exported_at - timedelta(hours=BELIEVER_NO_DUPLICATE_EXPORT_HOURS)
+    after = exported_at - timedelta(hours=BELIEVER_NO_DUPLICATE_LINK_EXPORT_HOURS)
 
     try:
         csv_bytes, stats = await build_believer_no_duplicate_user_links_csv(
@@ -2133,16 +2134,16 @@ async def export_108_hours_no_duplicates_links_cmd(interaction: discord.Interact
 
     file = discord.File(
         io.BytesIO(csv_bytes),
-        filename=f"campaign_no_duplicate_user_links_last_108h_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
+        filename=f"campaign_no_duplicate_user_links_last_150h_{exported_at.strftime('%Y%m%d_%H%M%S')}.csv",
     )
     await interaction.followup.send(
         (
             f"Scanned {stats['scanned_messages']} messages in <#{BELIEVER_PROOF_CHANNEL_ID}> "
-            f"over the last {BELIEVER_NO_DUPLICATE_EXPORT_HOURS} hours.\n"
+            f"over the last {BELIEVER_NO_DUPLICATE_LINK_EXPORT_HOURS} hours.\n"
             f"Users with X proof links: {stats['proof_user_count']}\n"
             f"Excluded for reused X status links: {stats['disqualified_user_count']}\n"
             f"Unique X status links: {stats['unique_status_count']}\n"
-            f"Exported eligible Discord IDs with links: {stats['eligible_user_count']}"
+            f"Exported eligible Discord IDs with all links: {stats['eligible_user_count']}"
         ),
         file=file,
         ephemeral=True,
