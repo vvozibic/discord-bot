@@ -73,6 +73,50 @@ class CampaignLinkReportTests(unittest.TestCase):
 
         self.assertEqual(csv_bytes.decode("utf-8-sig"), "user_id\n100\n200\n")
 
+    def test_link_rows_include_eligible_users_and_their_status_links(self):
+        rows, stats = campaign_link_report.find_no_duplicate_x_proof_user_link_rows(
+            [
+                ("100", "https://x.com/alice/status/111?s=20"),
+                ("100", "https://www.x.com/Alice/status/222/"),
+                ("200", "https://x.com/alice/status/111?ref=test"),
+                ("300", "https://x.com/charlie/status/333"),
+            ]
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "user_id": "100",
+                    "x_status_count": 2,
+                    "x_status_links": "https://x.com/alice/status/111 https://x.com/alice/status/222",
+                },
+                {
+                    "user_id": "300",
+                    "x_status_count": 1,
+                    "x_status_links": "https://x.com/charlie/status/333",
+                },
+            ],
+        )
+        self.assertEqual(stats["disqualified_user_count"], 1)
+
+    def test_link_csv_contains_user_id_count_and_links_columns(self):
+        csv_bytes = campaign_link_report.build_user_link_csv(
+            [
+                {
+                    "user_id": "100",
+                    "x_status_count": 1,
+                    "x_status_links": "https://x.com/alice/status/111",
+                }
+            ]
+        )
+
+        self.assertEqual(
+            csv_bytes.decode("utf-8-sig"),
+            "user_id,x_status_count,x_status_links\n"
+            "100,1,https://x.com/alice/status/111\n",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
