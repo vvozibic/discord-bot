@@ -80,6 +80,13 @@ BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
 BELIEVER_NO_DUPLICATE_EXPORT_HOURS = 108
 BELIEVER_NO_DUPLICATE_LINK_EXPORT_HOURS = 150
+EXPORT_COMMAND_ROLE_ID = int(
+    getattr(
+        config,
+        "EXPORT_COMMAND_ROLE_ID",
+        os.getenv("EXPORT_COMMAND_ROLE_ID", "1400819813122572369"),
+    ) or 0
+)
 MEMBER_EXPORT_FETCH_DELAY_SECONDS = float(
     getattr(
         config,
@@ -948,6 +955,33 @@ async def get_believer_campaign_channel(guild: discord.Guild):
 
 async def get_believer_proof_channel(guild: discord.Guild):
     return await get_believer_channel(guild, BELIEVER_PROOF_CHANNEL_ID)
+
+def member_has_role(member: discord.Member, role_id: int) -> bool:
+    return any(role.id == role_id for role in member.roles)
+
+async def require_export_command_role(interaction: discord.Interaction) -> bool:
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return False
+
+    if not EXPORT_COMMAND_ROLE_ID:
+        await interaction.response.send_message(
+            "Export command role ID is not configured.",
+            ephemeral=True,
+        )
+        return False
+
+    if not member_has_role(interaction.user, EXPORT_COMMAND_ROLE_ID):
+        await interaction.response.send_message(
+            f"You need the <@&{EXPORT_COMMAND_ROLE_ID}> role to use export commands.",
+            ephemeral=True,
+        )
+        return False
+
+    return True
 
 async def build_believer_user_ids_csv(channel, after: datetime) -> tuple[bytes, int, int]:
     users: dict[int, dict[str, object]] = {}
@@ -1999,21 +2033,9 @@ async def postbelievercampaign_cmd(interaction: discord.Interaction):
     )
 
 @tree.command(name="exportcampaignuserids", description="Export campaign proof user IDs from the last 24 hours")
-@discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def exportcampaignuserids_cmd(interaction: discord.Interaction):
-    if not interaction.guild or not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message(
-            "This command can only be used in a server.",
-            ephemeral=True,
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message(
-            "You need Manage Messages permission to export campaign user IDs.",
-            ephemeral=True,
-        )
+    if not await require_export_command_role(interaction):
         return
 
     if not BELIEVER_PROOF_CHANNEL_ID:
@@ -2069,21 +2091,9 @@ async def exportcampaignuserids_cmd(interaction: discord.Interaction):
     )
 
 @tree.command(name="108-hours-no-duplicates", description="Export 108h campaign users without reused X proofs")
-@discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
-    if not interaction.guild or not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message(
-            "This command can only be used in a server.",
-            ephemeral=True,
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message(
-            "You need Manage Messages permission to export campaign user IDs.",
-            ephemeral=True,
-        )
+    if not await require_export_command_role(interaction):
         return
 
     if not BELIEVER_PROOF_CHANNEL_ID:
@@ -2142,21 +2152,9 @@ async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
     )
 
 @tree.command(name="150h-no-duplicates-links", description="Export 150h eligible users with all links")
-@discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def export_150_hours_no_duplicates_links_cmd(interaction: discord.Interaction):
-    if not interaction.guild or not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message(
-            "This command can only be used in a server.",
-            ephemeral=True,
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message(
-            "You need Manage Messages permission to export campaign user links.",
-            ephemeral=True,
-        )
+    if not await require_export_command_role(interaction):
         return
 
     if not BELIEVER_PROOF_CHANNEL_ID:
@@ -2215,21 +2213,9 @@ async def export_150_hours_no_duplicates_links_cmd(interaction: discord.Interact
     )
 
 @tree.command(name="exportcampaignrolecheck", description="Export last 128 hours campaign nicknames with Ascended role status")
-@discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
-    if not interaction.guild or not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message(
-            "This command can only be used in a server.",
-            ephemeral=True,
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message(
-            "You need Manage Messages permission to export campaign role status.",
-            ephemeral=True,
-        )
+    if not await require_export_command_role(interaction):
         return
 
     if not BELIEVER_PROOF_CHANNEL_ID:
@@ -2302,25 +2288,13 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
     channel="Channel to scan; defaults to the current channel",
     days="Days of history to scan; 0 scans all readable history",
 )
-@discord.app_commands.default_permissions(manage_messages=True)
 @discord.app_commands.guild_only()
 async def exportchannelcontributors_cmd(
     interaction: discord.Interaction,
     channel: discord.TextChannel | None = None,
     days: int = 0,
 ):
-    if not interaction.guild or not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message(
-            "This command can only be used in a server.",
-            ephemeral=True,
-        )
-        return
-
-    if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message(
-            "You need Manage Messages permission to export channel contributors.",
-            ephemeral=True,
-        )
+    if not await require_export_command_role(interaction):
         return
 
     if days < 0:
