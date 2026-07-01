@@ -17,6 +17,7 @@ import base64
 import aiohttp
 import hmac
 import campaign_link_report
+import channel_contributor_report
 import database
 from datetime import datetime, timezone, timedelta
 from discord.ui.media_gallery import MediaGalleryItem
@@ -79,11 +80,18 @@ BELIEVER_CAMPAIGN_BUTTON_CUSTOM_ID = "mindoai:believer-campaign:participate:v1"
 BELIEVER_X_LINK_RE = re.compile(r"(?:https?://)?(?:www\.)?x\.com(?:/|\b)", re.IGNORECASE)
 BELIEVER_NO_DUPLICATE_EXPORT_HOURS = 108
 BELIEVER_NO_DUPLICATE_LINK_EXPORT_HOURS = 150
-BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS = float(
+MEMBER_EXPORT_FETCH_DELAY_SECONDS = float(
     getattr(
         config,
-        "BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS",
-        os.getenv("BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS", "0.35"),
+        "MEMBER_EXPORT_FETCH_DELAY_SECONDS",
+        getattr(
+            config,
+            "BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS",
+            os.getenv(
+                "MEMBER_EXPORT_FETCH_DELAY_SECONDS",
+                os.getenv("BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS", "0.35"),
+            ),
+        ),
     )
     or 0
 )
@@ -1030,7 +1038,7 @@ async def build_believer_no_duplicate_user_links_csv(
     csv_bytes = campaign_link_report.build_user_link_csv(rows)
     return csv_bytes, stats
 
-async def fetch_member_for_role_export(
+async def fetch_guild_member_for_export(
     guild: discord.Guild,
     user_id: int,
     *,
@@ -1040,8 +1048,8 @@ async def fetch_member_for_role_export(
     if cached_member is not None:
         return cached_member, "cache"
 
-    if BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS > 0:
-        await asyncio.sleep(BELIEVER_ROLE_EXPORT_MEMBER_FETCH_DELAY_SECONDS)
+    if MEMBER_EXPORT_FETCH_DELAY_SECONDS > 0:
+        await asyncio.sleep(MEMBER_EXPORT_FETCH_DELAY_SECONDS)
 
     for attempt in range(max_attempts):
         try:
@@ -1110,7 +1118,7 @@ async def build_believer_role_check_csv(
         if user["member_fetch_status"] != "pending":
             continue
 
-        member, fetch_status = await fetch_member_for_role_export(guild, user_id)
+        member, fetch_status = await fetch_guild_member_for_export(guild, user_id)
         user["member_fetch_status"] = fetch_status
 
         if fetch_status == "not_found":
@@ -1180,6 +1188,63 @@ async def build_believer_role_check_csv(
     }
 
     return output.getvalue().encode("utf-8-sig"), stats
+
+async def build_channel_contributors_csv(
+    guild: discord.Guild,
+    channel,
+    after: datetime | None,
+) -> tuple[bytes, dict[str, int]]:
+    users: dict[int, dict[str, object]] = {}
+    scanned_messages = 0
+    channel_id = int(getattr(channel, "id"))
+    channel_name = getattr(channel, "name", str(channel_id))
+    history_kwargs: dict[str, object] = {
+        "limit": None,
+        "oldest_first": True,
+    }
+    if after is not None:
+        history_kwargs["after"] = after
+
+    async for message in channel.history(**history_kwargs):
+        scanned_messages += 1
+        recorded = channel_contributor_report.update_contributor_from_message(
+            users,
+            message,
+            channel_id=channel_id,
+            channel_name=channel_name,
+        )
+        if not recorded:
+            continue
+
+        author = message.author
+        if isinstance(author, discord.Member):
+            channel_contributor_report.apply_member_identity(
+                users[int(author.id)],
+                author,
+                "message_member",
+            )
+
+    for user_id, user in users.items():
+        if user["member_fetch_status"] != "pending":
+            continue
+
+        member, fetch_status = await fetch_guild_member_for_export(guild, user_id)
+        user["member_fetch_status"] = fetch_status
+        if fetch_status == "not_found":
+            user["currently_in_guild"] = False
+            continue
+        if member is None:
+            user["currently_in_guild"] = "unknown"
+            continue
+
+        channel_contributor_report.apply_member_identity(user, member, fetch_status)
+
+    rows = list(users.values())
+    stats = channel_contributor_report.build_channel_contributor_stats(
+        rows,
+        scanned_messages,
+    )
+    return channel_contributor_report.build_channel_contributor_csv(rows), stats
 
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
@@ -2224,6 +2289,101 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
             f"{stats['total_users']}\n"
             f"Have <@&{BELIEVER_ROLE_ID}>: {stats['with_role']}\n"
             f"In guild without role: {stats['without_role']}\n"
+            f"No longer in guild: {stats['left_guild']}\n"
+            f"Member lookups failed: {stats['lookup_failed']}\n"
+            f"Messages scanned: {stats['scanned_messages']}"
+        ),
+        file=file,
+        ephemeral=True,
+    )
+
+@tree.command(name="exportchannelcontributors", description="Export contributor nicknames from a channel")
+@discord.app_commands.describe(
+    channel="Channel to scan; defaults to the current channel",
+    days="Days of history to scan; 0 scans all readable history",
+)
+@discord.app_commands.default_permissions(manage_messages=True)
+@discord.app_commands.guild_only()
+async def exportchannelcontributors_cmd(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel | None = None,
+    days: int = 0,
+):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message(
+            "You need Manage Messages permission to export channel contributors.",
+            ephemeral=True,
+        )
+        return
+
+    if days < 0:
+        await interaction.response.send_message(
+            "Days must be 0 or higher.",
+            ephemeral=True,
+        )
+        return
+
+    target_channel = channel or interaction.channel
+    target_channel_id = getattr(target_channel, "id", None)
+    target_channel_guild = getattr(target_channel, "guild", None)
+    if (
+        target_channel is None
+        or target_channel_id is None
+        or not hasattr(target_channel, "history")
+        or getattr(target_channel_guild, "id", None) != interaction.guild.id
+    ):
+        await interaction.response.send_message(
+            "I can only export contributors from a readable channel in this server.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    exported_at = datetime.now(timezone.utc)
+    after = None if days == 0 else exported_at - timedelta(days=days)
+    range_text = "all readable history" if days == 0 else f"the last {days} day{'s' if days != 1 else ''}"
+
+    try:
+        csv_bytes, stats = await build_channel_contributors_csv(
+            interaction.guild,
+            target_channel,
+            after,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "I need permission to read message history and fetch members for this export.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord rejected the channel contributor export: {exc}",
+            ephemeral=True,
+        )
+        return
+
+    range_slug = "all_history" if days == 0 else f"last_{days}d"
+    file = discord.File(
+        io.BytesIO(csv_bytes),
+        filename=(
+            f"channel_contributors_{target_channel_id}_{range_slug}_"
+            f"{exported_at.strftime('%Y%m%d_%H%M%S')}.csv"
+        ),
+    )
+    channel_mention = getattr(target_channel, "mention", f"<#{target_channel_id}>")
+    await interaction.followup.send(
+        (
+            f"Contributor nicknames in {channel_mention} from {range_text}: "
+            f"{stats['total_users']}\n"
+            f"Currently in guild: {stats['in_guild']}\n"
             f"No longer in guild: {stats['left_guild']}\n"
             f"Member lookups failed: {stats['lookup_failed']}\n"
             f"Messages scanned: {stats['scanned_messages']}"
