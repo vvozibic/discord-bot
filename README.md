@@ -41,3 +41,52 @@ npm run dev
 
 - The worker is stubbed and returns deterministic fake results based on the user ID + link. Replace the stub worker with your real job processor when ready.
 - The bot role must be above the target roles in the Discord role hierarchy to assign them.
+
+## Configurable message audit and raffle
+
+Members with the configured export-command role can run `/audit-messages` to
+export every non-bot message in an editable local date/time range and select
+random winners. The default channel is `1527375658014085292`, the default
+timezone is `Europe/Warsaw`, and the default raffle selects five unique users:
+
+```env
+AUDIT_CHANNEL_ID=1527375658014085292
+AUDIT_TIMEZONE=Europe/Warsaw
+AUDIT_WINNER_COUNT=5
+AUDIT_MAX_RANGE_DAYS=31
+AUDIT_MAX_MESSAGES=10000
+AUDIT_MAX_BUFFER_MB=8
+```
+
+Every run can override the channel, timezone, and winner count:
+
+```text
+/audit-messages start:"04/08/2026 12:26" end:"05/08/2026 13:00"
+/audit-messages start:"2026-09-01" end:"2026-09-07" timezone_name:"Europe/Warsaw" winner_count:10 channel:#campaign
+```
+
+Accepted date formats are `YYYY-MM-DD` and `DD/MM/YYYY`; add `HH:MM` (and
+optionally seconds) for exact times. The start is inclusive. The end is also
+inclusive at the entered precision: an end date includes the whole day and an
+end such as `13:00` includes the whole `13:00` minute.
+
+The command returns a spreadsheet-safe CSV plus canonical JSON. It retains
+attachment-only, sticker-only, embed-only, and empty-text messages, so their
+senders remain eligible; images are not downloaded or OCRed. The JSON includes
+all message rows, a deduplicated sender list with representative content, and
+the winners. Each stable Discord user ID gets one raffle entry regardless of
+message count. Bot-authored messages are excluded.
+
+This complements `/exportchannelcontributors`: that command reports one
+current-identity row per contributor, while `/audit-messages` preserves every
+message, attachment metadata, and raffle outcome for an exact range.
+
+To protect the bot from unbounded scans, a run stops without producing partial
+winners if it exceeds the configured date, scanned-message, or memory limit.
+Bot/webhook messages count toward the scan limit even though they are excluded
+from the export and raffle. Shorten the range or adjust `AUDIT_MAX_*` when a
+larger export is intentional.
+
+The bot needs **View Channel** and **Read Message History** in each audited
+channel, and **Message Content Intent** must remain enabled. Access follows the
+same `EXPORT_COMMAND_ROLE_ID` role gate as the bot's other export commands.
