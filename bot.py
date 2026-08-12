@@ -18,6 +18,7 @@ import aiohttp
 import hmac
 import campaign_link_report
 import channel_contributor_report
+import message_audit
 import database
 from datetime import datetime, timezone, timedelta
 from discord.ui.media_gallery import MediaGalleryItem
@@ -86,6 +87,54 @@ EXPORT_COMMAND_ROLE_ID = int(
         "EXPORT_COMMAND_ROLE_ID",
         os.getenv("EXPORT_COMMAND_ROLE_ID", "1400819813122572369"),
     ) or 0
+)
+AUDIT_CHANNEL_ID = int(
+    getattr(
+        config,
+        "AUDIT_CHANNEL_ID",
+        os.getenv("AUDIT_CHANNEL_ID", "1527375658014085292"),
+    )
+    or 1527375658014085292
+)
+AUDIT_TIMEZONE = (
+    getattr(config, "AUDIT_TIMEZONE", os.getenv("AUDIT_TIMEZONE", "Europe/Warsaw"))
+    or "Europe/Warsaw"
+).strip()
+AUDIT_WINNER_COUNT = int(
+    getattr(config, "AUDIT_WINNER_COUNT", os.getenv("AUDIT_WINNER_COUNT", "5")) or 5
+)
+AUDIT_MAX_RANGE_DAYS = max(
+    1,
+    int(
+        getattr(
+            config,
+            "AUDIT_MAX_RANGE_DAYS",
+            os.getenv("AUDIT_MAX_RANGE_DAYS", "31"),
+        )
+        or 31
+    ),
+)
+AUDIT_MAX_MESSAGES = max(
+    1,
+    int(
+        getattr(
+            config,
+            "AUDIT_MAX_MESSAGES",
+            os.getenv("AUDIT_MAX_MESSAGES", "10000"),
+        )
+        or 10000
+    ),
+)
+AUDIT_MAX_BUFFER_BYTES = 1024 * 1024 * max(
+    1,
+    int(
+        getattr(
+            config,
+            "AUDIT_MAX_BUFFER_MB",
+            os.getenv("AUDIT_MAX_BUFFER_MB", "8"),
+        )
+        or 8
+    ),
 )
 MEMBER_EXPORT_FETCH_DELAY_SECONDS = float(
     getattr(
@@ -1280,6 +1329,56 @@ async def build_channel_contributors_csv(
     )
     return channel_contributor_report.build_channel_contributor_csv(rows), stats
 
+def _audit_iso_utc(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+def _audit_message_row(
+    message: discord.Message,
+    audit_window: message_audit.AuditWindow,
+) -> dict[str, object]:
+    """Convert a Discord message into the canonical JSON-safe audit row."""
+    author = message.author
+    created_at = message.created_at.astimezone(timezone.utc)
+    edited_at = message.edited_at.astimezone(timezone.utc) if message.edited_at else None
+    attachments = []
+    for attachment in message.attachments:
+        attachments.append(
+            {
+                "id": str(attachment.id),
+                "filename": attachment.filename,
+                "content_type": attachment.content_type,
+                "size": attachment.size,
+                "url": attachment.url,
+                "proxy_url": attachment.proxy_url,
+                "description": getattr(attachment, "description", None),
+                "spoiler": attachment.is_spoiler(),
+            }
+        )
+
+    return {
+        "message_id": str(message.id),
+        "timestamp_local": created_at.astimezone(audit_window.zone).isoformat(),
+        "timestamp_utc": _audit_iso_utc(created_at),
+        "author_id": str(author.id),
+        # Discord does not retain a historical nickname on the message object;
+        # this is the member's display name when the report is generated.
+        "nickname": getattr(author, "display_name", getattr(author, "name", "")),
+        "username": getattr(author, "name", ""),
+        "global_name": getattr(author, "global_name", None) or "",
+        "content": message.content or "",
+        "attachments": attachments,
+        "sticker_count": len(message.stickers),
+        "embed_count": len(message.embeds),
+        "edited_timestamp_local": (
+            edited_at.astimezone(audit_window.zone).isoformat() if edited_at else ""
+        ),
+        "edited_timestamp_utc": _audit_iso_utc(edited_at),
+        "message_type": getattr(message.type, "name", str(message.type)),
+        "jump_url": message.jump_url,
+    }
+
 def message_has_x_link(message: discord.Message) -> bool:
     return bool(BELIEVER_X_LINK_RE.search(message.content or ""))
 
@@ -2282,6 +2381,213 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
         file=file,
         ephemeral=True,
     )
+
+@tree.command(
+    name="audit-messages",
+    description="Export messages and randomly select unique users from an editable date range",
+)
+@discord.app_commands.describe(
+    start="Inclusive local start: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
+    end="Inclusive local end: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
+    timezone_name="IANA timezone, for example Europe/Warsaw",
+    winner_count="Unique users to select (default 5, maximum 25)",
+    channel="Channel to scan; omit to use the configured audit channel",
+)
+@discord.app_commands.guild_only()
+async def audit_messages_cmd(
+    interaction: discord.Interaction,
+    start: str,
+    end: str,
+    timezone_name: str = AUDIT_TIMEZONE,
+    winner_count: int = AUDIT_WINNER_COUNT,
+    channel: discord.TextChannel | None = None,
+):
+    """Export every non-bot message in a range and raffle unique authors."""
+    if not await require_export_command_role(interaction):
+        return
+
+    if not 1 <= winner_count <= 25:
+        await interaction.response.send_message(
+            "`winner_count` must be between 1 and 25.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        audit_window = message_audit.parse_audit_window(start, end, timezone_name)
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+
+    local_duration = (
+        audit_window.end_exclusive_local.replace(tzinfo=None)
+        - audit_window.start_local.replace(tzinfo=None)
+    )
+    if local_duration > timedelta(days=AUDIT_MAX_RANGE_DAYS):
+        await interaction.response.send_message(
+            (
+                f"The requested range is longer than the configured "
+                f"{AUDIT_MAX_RANGE_DAYS}-day safety limit. Run shorter ranges or "
+                "raise `AUDIT_MAX_RANGE_DAYS`."
+            ),
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    channel_id = channel.id if channel else AUDIT_CHANNEL_ID
+
+    try:
+        audit_channel = channel or await get_believer_channel(
+            interaction.guild,
+            channel_id,
+        )
+        if audit_channel is None or not hasattr(audit_channel, "history"):
+            await interaction.followup.send(
+                f"I cannot access a readable text channel at <#{channel_id}>.",
+                ephemeral=True,
+            )
+            return
+
+        if getattr(getattr(audit_channel, "guild", None), "id", None) != interaction.guild.id:
+            await interaction.followup.send(
+                "The audit channel does not belong to this server.",
+                ephemeral=True,
+            )
+            return
+
+        scan_result = await message_audit.scan_channel_messages(
+            audit_channel,
+            audit_window,
+            _audit_message_row,
+            max_messages=AUDIT_MAX_MESSAGES,
+            max_buffer_bytes=AUDIT_MAX_BUFFER_BYTES,
+        )
+
+        if scan_result.safety_limit_reason:
+            await interaction.followup.send(
+                (
+                    f"The audit stopped safely because the range contains "
+                    f"{scan_result.safety_limit_reason}. No partial raffle was "
+                    "performed. "
+                    "Run a shorter range or raise the corresponding `AUDIT_MAX_*` "
+                    "environment setting."
+                ),
+                ephemeral=True,
+            )
+            return
+
+        rows = scan_result.rows
+        winners = message_audit.select_winners(rows, winner_count)
+        metadata = {
+            **audit_window.metadata(),
+            "generated_at_utc": _audit_iso_utc(datetime.now(timezone.utc)),
+            "guild_id": str(interaction.guild.id),
+            "guild_name": interaction.guild.name,
+            "channel_id": str(audit_channel.id),
+            "channel_name": audit_channel.name,
+            "requested_winner_count": winner_count,
+            "fetched_message_count": scan_result.fetched_messages,
+            "excluded_bot_message_count": scan_result.excluded_bot_messages,
+            "safety_limits": {
+                "maximum_range_days": AUDIT_MAX_RANGE_DAYS,
+                "maximum_scanned_messages": AUDIT_MAX_MESSAGES,
+                "maximum_buffer_bytes": AUDIT_MAX_BUFFER_BYTES,
+            },
+            "raffle_rule": "One entry per unique non-bot Discord author ID.",
+            "attachment_policy": (
+                "Attachment-only, sticker-only, embed-only, and empty-text user "
+                "messages are retained. Image contents are not OCRed."
+            ),
+            "nickname_note": (
+                "Nickname is the display name visible when the report was generated, "
+                "not a guaranteed historical nickname."
+            ),
+        }
+        csv_bytes = message_audit.build_message_csv(rows)
+        json_bytes = message_audit.build_json_export(metadata, rows, winners)
+
+        upload_limit = interaction.guild.filesize_limit
+        oversized = [
+            ("CSV", len(csv_bytes)),
+            ("JSON", len(json_bytes)),
+        ]
+        oversized = [(name, size) for name, size in oversized if size > upload_limit]
+        if oversized:
+            details = ", ".join(
+                f"{name} {size / (1024 * 1024):.1f} MB" for name, size in oversized
+            )
+            await interaction.followup.send(
+                (
+                    f"The audit completed, but the export exceeds this server's "
+                    f"{upload_limit / (1024 * 1024):.1f} MB upload limit ({details}). "
+                    "Run a shorter date range."
+                ),
+                ephemeral=True,
+            )
+            return
+
+        filename_start = audit_window.start_utc.strftime("%Y%m%dT%H%MZ")
+        filename_end = audit_window.end_exclusive_utc.strftime("%Y%m%dT%H%MZ")
+        filename_stem = (
+            f"message-audit-{audit_channel.id}-{filename_start}-{filename_end}"
+        )
+        files = [
+            discord.File(io.BytesIO(csv_bytes), filename=f"{filename_stem}.csv"),
+            discord.File(io.BytesIO(json_bytes), filename=f"{filename_stem}.json"),
+        ]
+
+        if winners:
+            winner_lines = []
+            visible_winners = winners[:10]
+            for index, winner in enumerate(visible_winners, start=1):
+                display_name = discord.utils.escape_markdown(
+                    winner["nickname"] or winner["username"] or winner["author_id"]
+                )
+                sample_limit = 160 if len(visible_winners) <= 5 else 80
+                sample = discord.utils.escape_markdown(
+                    winner["content_piece"][:sample_limit]
+                )
+                winner_lines.append(
+                    f"{index}. **{display_name}** (`{winner['author_id']}`) — {sample}"
+                )
+            if len(winners) > len(visible_winners):
+                winner_lines.append(
+                    f"…and {len(winners) - len(visible_winners)} more listed in JSON."
+                )
+            winner_summary = "\n".join(winner_lines)
+        else:
+            winner_summary = "No eligible non-bot users were found."
+
+        await interaction.followup.send(
+            (
+                f"Exported {len(rows)} messages from "
+                f"{len(message_audit.unique_users(rows))} unique users in "
+                f"<#{audit_channel.id}>.\n\n"
+                f"**Random winners**\n{winner_summary}"
+            ),
+            files=files,
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            (
+                f"I cannot read <#{channel_id}>. Grant the bot **View Channel** "
+                "and **Read Message History** permissions."
+            ),
+            ephemeral=True,
+        )
+    except discord.NotFound:
+        await interaction.followup.send(
+            f"I could not find channel `{channel_id}`.",
+            ephemeral=True,
+        )
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"Discord could not complete the audit: {exc}",
+            ephemeral=True,
+        )
 
 @tree.command(name="exportchannelcontributors", description="Export contributor nicknames from a channel")
 @discord.app_commands.describe(

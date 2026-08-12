@@ -8,4 +8,5 @@ aiohttp>=3.8
 easyocr>=1.7
 opencv-python-headless>=4.8
 Pillow>=10.0
+tzdata>=2024.1
 numpy>=1.23
