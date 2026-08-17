@@ -51,6 +51,7 @@ timezone is `Europe/Warsaw`, and the default raffle selects five unique users:
 
 ```env
 AUDIT_CHANNEL_ID=1527375658014085292
+IMAGE_AUDIT_CHANNEL_ID=1400848157436280943
 AUDIT_TIMEZONE=Europe/Warsaw
 AUDIT_WINNER_COUNT=5
 AUDIT_MAX_RANGE_DAYS=31
@@ -64,6 +65,31 @@ Every run can override the channel, timezone, and winner count:
 /audit-messages start:"04/08/2026 12:26" end:"05/08/2026 13:00"
 /audit-messages start:"2026-09-01" end:"2026-09-07" timezone_name:"Europe/Warsaw" winner_count:10 channel:#campaign
 ```
+
+### Image-sender-only audit
+
+`/audit-image-senders` uses the same editable dates, timezone, unique-user
+raffle, CSV/JSON output, permissions, and safety limits, but retains only
+messages that contain at least one image attachment. A captioned image still
+qualifies. Non-image files, link embeds, and stickers alone do not qualify.
+
+Its configured default channel is `1400848157436280943`. For the requested
+range, run:
+
+```text
+/audit-image-senders start:"10/08/2026 18:30" end:"10/08/2026 19:20"
+```
+
+The channel, timezone, and winner count can still be overridden on every run:
+
+```text
+/audit-image-senders start:"2026-09-01" end:"2026-09-07" timezone_name:"Europe/Warsaw" winner_count:10 channel:#campaign
+```
+
+Image detection prefers Discord's `image/*` attachment MIME type and falls
+back to common image filename extensions when Discord does not provide a usable
+MIME type. Every qualifying sender receives one raffle entry regardless of how
+many images they posted. Image bytes are not downloaded or OCRed.
 
 Accepted date formats are `YYYY-MM-DD` and `DD/MM/YYYY`; add `HH:MM` (and
 optionally seconds) for exact times. The start is inclusive. The end is also
@@ -81,11 +107,11 @@ This complements `/exportchannelcontributors`: that command reports one
 current-identity row per contributor, while `/audit-messages` preserves every
 message, attachment metadata, and raffle outcome for an exact range.
 
-To protect the bot from unbounded scans, a run stops without producing partial
-winners if it exceeds the configured date, scanned-message, or memory limit.
-Bot/webhook messages count toward the scan limit even though they are excluded
-from the export and raffle. Shorten the range or adjust `AUDIT_MAX_*` when a
-larger export is intentional.
+To protect the bot from unbounded scans, either audit command stops without
+producing partial winners if it exceeds the configured date, scanned-message,
+or memory limit. Bot/webhook and filtered non-image messages count toward the
+scan limit even though they are excluded from the image-only export and raffle.
+Shorten the range or adjust `AUDIT_MAX_*` when a larger export is intentional.
 
 The bot needs **View Channel** and **Read Message History** in each audited
 channel, and **Message Content Intent** must remain enabled. Access follows the

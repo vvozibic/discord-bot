@@ -4,6 +4,7 @@ import json
 import random
 import unittest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import message_audit
 
@@ -50,6 +51,19 @@ class AuditWindowTests(unittest.TestCase):
         )
         self.assertFalse(
             window.contains(datetime(2026, 8, 5, 11, 1, tzinfo=timezone.utc))
+        )
+
+    def test_parses_requested_image_audit_range(self):
+        window = message_audit.parse_audit_window(
+            "10/08/2026 18:30",
+            "10/08/2026 19:20",
+            "Europe/Warsaw",
+        )
+
+        self.assertEqual(window.start_utc.isoformat(), "2026-08-10T16:30:00+00:00")
+        self.assertEqual(
+            window.end_exclusive_utc.isoformat(),
+            "2026-08-10T17:21:00+00:00",
         )
 
     def test_date_only_end_includes_entire_dst_transition_day(self):
@@ -142,6 +156,45 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(set(winner_ids), {"100", "200", "300"})
 
 
+class ImageAttachmentTests(unittest.TestCase):
+    def test_detects_image_mime_even_when_filename_has_no_extension(self):
+        message = SimpleNamespace(
+            attachments=[
+                SimpleNamespace(filename="upload", content_type="image/png")
+            ]
+        )
+
+        self.assertTrue(message_audit.message_has_image_attachment(message))
+
+    def test_uses_image_extension_when_discord_omits_content_type(self):
+        message = SimpleNamespace(
+            attachments=[
+                SimpleNamespace(filename="SPOILER_Proof.WEBP", content_type=None)
+            ]
+        )
+
+        self.assertTrue(message_audit.message_has_image_attachment(message))
+
+    def test_rejects_non_image_attachments_and_embed_only_messages(self):
+        document_message = SimpleNamespace(
+            attachments=[
+                SimpleNamespace(filename="results.pdf", content_type="application/pdf")
+            ]
+        )
+        misleading_filename_message = SimpleNamespace(
+            attachments=[
+                SimpleNamespace(filename="not-really.png", content_type="application/pdf")
+            ]
+        )
+        embed_only_message = SimpleNamespace(attachments=[], embeds=[object()])
+
+        self.assertFalse(message_audit.message_has_image_attachment(document_message))
+        self.assertFalse(
+            message_audit.message_has_image_attachment(misleading_filename_message)
+        )
+        self.assertFalse(message_audit.message_has_image_attachment(embed_only_message))
+
+
 class SerializationTests(unittest.TestCase):
     def test_csv_is_unicode_safe_and_protects_spreadsheet_formulas(self):
         row = make_row("10", "100", "=DANGEROUS()", nickname="Beta🦊")
@@ -190,10 +243,20 @@ class FakeAuthor:
 
 
 class FakeMessage:
-    def __init__(self, message_id: int, created_at: datetime, *, bot: bool = False):
+    def __init__(
+        self,
+        message_id: int,
+        created_at: datetime,
+        *,
+        bot: bool = False,
+        content: str = "",
+        attachments=None,
+    ):
         self.id = message_id
         self.created_at = created_at
         self.author = FakeAuthor(message_id, bot=bot)
+        self.content = content
+        self.attachments = list(attachments or [])
 
 
 class FakeChannel:
@@ -215,7 +278,7 @@ def build_fake_row(message, _window):
     return {
         "message_id": str(message.id),
         "author_id": str(message.author.id),
-        "content": "test",
+        "content": message.content,
         "attachments": [],
     }
 
@@ -278,6 +341,46 @@ class AuditScanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.excluded_bot_messages, 2)
         self.assertEqual(result.rows, [])
         self.assertEqual(result.safety_limit_reason, "more than 2 messages to scan")
+
+    async def test_image_filter_keeps_text_with_image_and_excludes_other_posts(self):
+        window = message_audit.parse_audit_window(
+            "10/08/2026 18:30",
+            "10/08/2026 19:20",
+            "Europe/Warsaw",
+        )
+        image = SimpleNamespace(filename="proof.jpg", content_type="image/jpeg")
+        document = SimpleNamespace(
+            filename="proof.pdf",
+            content_type="application/pdf",
+        )
+        messages = [
+            FakeMessage(
+                1,
+                window.start_utc,
+                content="caption with an image",
+                attachments=[image],
+            ),
+            FakeMessage(2, window.start_utc + timedelta(minutes=1)),
+            FakeMessage(
+                3,
+                window.start_utc + timedelta(minutes=2),
+                attachments=[document],
+            ),
+        ]
+
+        result = await message_audit.scan_channel_messages(
+            FakeChannel(messages),
+            window,
+            build_fake_row,
+            max_messages=10,
+            max_buffer_bytes=10_000,
+            message_filter=message_audit.message_has_image_attachment,
+        )
+
+        self.assertEqual([row["message_id"] for row in result.rows], ["1"])
+        self.assertEqual(result.rows[0]["content"], "caption with an image")
+        self.assertEqual(result.fetched_messages, 3)
+        self.assertEqual(result.excluded_filtered_messages, 2)
 
     async def test_buffer_cap_checks_before_appending_partial_row(self):
         window = message_audit.parse_audit_window(
