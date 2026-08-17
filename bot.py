@@ -96,6 +96,14 @@ AUDIT_CHANNEL_ID = int(
     )
     or 1527375658014085292
 )
+IMAGE_AUDIT_CHANNEL_ID = int(
+    getattr(
+        config,
+        "IMAGE_AUDIT_CHANNEL_ID",
+        os.getenv("IMAGE_AUDIT_CHANNEL_ID", "1400848157436280943"),
+    )
+    or 1400848157436280943
+)
 AUDIT_TIMEZONE = (
     getattr(config, "AUDIT_TIMEZONE", os.getenv("AUDIT_TIMEZONE", "Europe/Warsaw"))
     or "Europe/Warsaw"
@@ -2382,27 +2390,18 @@ async def exportcampaignrolecheck_cmd(interaction: discord.Interaction):
         ephemeral=True,
     )
 
-@tree.command(
-    name="audit-messages",
-    description="Export messages and randomly select unique users from an editable date range",
-)
-@discord.app_commands.describe(
-    start="Inclusive local start: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
-    end="Inclusive local end: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
-    timezone_name="IANA timezone, for example Europe/Warsaw",
-    winner_count="Unique users to select (default 5, maximum 25)",
-    channel="Channel to scan; omit to use the configured audit channel",
-)
-@discord.app_commands.guild_only()
-async def audit_messages_cmd(
+async def _run_message_audit_command(
     interaction: discord.Interaction,
+    *,
     start: str,
     end: str,
-    timezone_name: str = AUDIT_TIMEZONE,
-    winner_count: int = AUDIT_WINNER_COUNT,
-    channel: discord.TextChannel | None = None,
+    timezone_name: str,
+    winner_count: int,
+    channel: discord.TextChannel | None,
+    default_channel_id: int,
+    image_only: bool,
 ):
-    """Export every non-bot message in a range and raffle unique authors."""
+    """Run a bounded audit with optional image-attachment filtering."""
     if not await require_export_command_role(interaction):
         return
 
@@ -2435,7 +2434,7 @@ async def audit_messages_cmd(
         return
 
     await interaction.response.defer(ephemeral=True, thinking=True)
-    channel_id = channel.id if channel else AUDIT_CHANNEL_ID
+    channel_id = channel.id if channel else default_channel_id
 
     try:
         audit_channel = channel or await get_believer_channel(
@@ -2462,6 +2461,9 @@ async def audit_messages_cmd(
             _audit_message_row,
             max_messages=AUDIT_MAX_MESSAGES,
             max_buffer_bytes=AUDIT_MAX_BUFFER_BYTES,
+            message_filter=(
+                message_audit.message_has_image_attachment if image_only else None
+            ),
         )
 
         if scan_result.safety_limit_reason:
@@ -2489,15 +2491,36 @@ async def audit_messages_cmd(
             "requested_winner_count": winner_count,
             "fetched_message_count": scan_result.fetched_messages,
             "excluded_bot_message_count": scan_result.excluded_bot_messages,
+            "excluded_filtered_message_count": (
+                scan_result.excluded_filtered_messages
+            ),
             "safety_limits": {
                 "maximum_range_days": AUDIT_MAX_RANGE_DAYS,
                 "maximum_scanned_messages": AUDIT_MAX_MESSAGES,
                 "maximum_buffer_bytes": AUDIT_MAX_BUFFER_BYTES,
             },
-            "raffle_rule": "One entry per unique non-bot Discord author ID.",
+            "message_filter": (
+                "At least one Discord image attachment is required. Image MIME "
+                "types are preferred, with recognized image filename extensions "
+                "as a fallback."
+                if image_only
+                else "All non-bot user messages in the requested range."
+            ),
+            "raffle_rule": (
+                "One entry per unique non-bot Discord author ID among messages "
+                "with image attachments."
+                if image_only
+                else "One entry per unique non-bot Discord author ID."
+            ),
             "attachment_policy": (
-                "Attachment-only, sticker-only, embed-only, and empty-text user "
-                "messages are retained. Image contents are not OCRed."
+                "Only messages with at least one image attachment are retained. "
+                "Text and additional attachments on qualifying messages are "
+                "preserved. Image contents are not OCRed."
+                if image_only
+                else (
+                    "Attachment-only, sticker-only, embed-only, and empty-text "
+                    "user messages are retained. Image contents are not OCRed."
+                )
             ),
             "nickname_note": (
                 "Nickname is the display name visible when the report was generated, "
@@ -2529,8 +2552,9 @@ async def audit_messages_cmd(
 
         filename_start = audit_window.start_utc.strftime("%Y%m%dT%H%MZ")
         filename_end = audit_window.end_exclusive_utc.strftime("%Y%m%dT%H%MZ")
+        filename_prefix = "image-sender-audit" if image_only else "message-audit"
         filename_stem = (
-            f"message-audit-{audit_channel.id}-{filename_start}-{filename_end}"
+            f"{filename_prefix}-{audit_channel.id}-{filename_start}-{filename_end}"
         )
         files = [
             discord.File(io.BytesIO(csv_bytes), filename=f"{filename_stem}.csv"),
@@ -2557,14 +2581,22 @@ async def audit_messages_cmd(
                 )
             winner_summary = "\n".join(winner_lines)
         else:
-            winner_summary = "No eligible non-bot users were found."
+            winner_summary = (
+                "No eligible non-bot image senders were found."
+                if image_only
+                else "No eligible non-bot users were found."
+            )
+
+        message_label = "image-bearing messages" if image_only else "messages"
+        user_label = "unique image senders" if image_only else "unique users"
+        winner_label = "Random image-sender winners" if image_only else "Random winners"
 
         await interaction.followup.send(
             (
-                f"Exported {len(rows)} messages from "
-                f"{len(message_audit.unique_users(rows))} unique users in "
+                f"Exported {len(rows)} {message_label} from "
+                f"{len(message_audit.unique_users(rows))} {user_label} in "
                 f"<#{audit_channel.id}>.\n\n"
-                f"**Random winners**\n{winner_summary}"
+                f"**{winner_label}**\n{winner_summary}"
             ),
             files=files,
             ephemeral=True,
@@ -2588,6 +2620,72 @@ async def audit_messages_cmd(
             f"Discord could not complete the audit: {exc}",
             ephemeral=True,
         )
+
+
+@tree.command(
+    name="audit-messages",
+    description="Export messages and randomly select unique users from an editable date range",
+)
+@discord.app_commands.describe(
+    start="Inclusive local start: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
+    end="Inclusive local end: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
+    timezone_name="IANA timezone, for example Europe/Warsaw",
+    winner_count="Unique users to select (default 5, maximum 25)",
+    channel="Channel to scan; omit to use the configured audit channel",
+)
+@discord.app_commands.guild_only()
+async def audit_messages_cmd(
+    interaction: discord.Interaction,
+    start: str,
+    end: str,
+    timezone_name: str = AUDIT_TIMEZONE,
+    winner_count: int = AUDIT_WINNER_COUNT,
+    channel: discord.TextChannel | None = None,
+):
+    """Export every non-bot message in a range and raffle unique authors."""
+    await _run_message_audit_command(
+        interaction,
+        start=start,
+        end=end,
+        timezone_name=timezone_name,
+        winner_count=winner_count,
+        channel=channel,
+        default_channel_id=AUDIT_CHANNEL_ID,
+        image_only=False,
+    )
+
+
+@tree.command(
+    name="audit-image-senders",
+    description="Export image posts and randomly select unique senders from an editable date range",
+)
+@discord.app_commands.describe(
+    start="Inclusive local start: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
+    end="Inclusive local end: YYYY-MM-DD HH:MM or DD/MM/YYYY HH:MM",
+    timezone_name="IANA timezone, for example Europe/Warsaw",
+    winner_count="Unique image senders to select (default 5, maximum 25)",
+    channel="Channel to scan; omit to use the configured image-audit channel",
+)
+@discord.app_commands.guild_only()
+async def audit_image_senders_cmd(
+    interaction: discord.Interaction,
+    start: str,
+    end: str,
+    timezone_name: str = AUDIT_TIMEZONE,
+    winner_count: int = AUDIT_WINNER_COUNT,
+    channel: discord.TextChannel | None = None,
+):
+    """Export messages with image attachments and raffle their unique authors."""
+    await _run_message_audit_command(
+        interaction,
+        start=start,
+        end=end,
+        timezone_name=timezone_name,
+        winner_count=winner_count,
+        channel=channel,
+        default_channel_id=IMAGE_AUDIT_CHANNEL_ID,
+        image_only=True,
+    )
 
 @tree.command(name="exportchannelcontributors", description="Export contributor nicknames from a channel")
 @discord.app_commands.describe(

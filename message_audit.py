@@ -74,6 +74,7 @@ class AuditScanResult:
     rows: list[dict[str, Any]]
     fetched_messages: int
     excluded_bot_messages: int
+    excluded_filtered_messages: int
     buffered_row_bytes: int
     safety_limit_reason: str | None
 
@@ -257,6 +258,43 @@ def select_winners(
     return sampler.sample(candidates, sample_size)
 
 
+_IMAGE_FILENAME_EXTENSIONS = (
+    ".apng",
+    ".avif",
+    ".bmp",
+    ".gif",
+    ".heic",
+    ".heif",
+    ".ico",
+    ".jpe",
+    ".jpeg",
+    ".jfif",
+    ".jpg",
+    ".png",
+    ".svg",
+    ".tif",
+    ".tiff",
+    ".webp",
+)
+
+
+def attachment_is_image(attachment: Any) -> bool:
+    """Return whether a Discord-like attachment represents an image file."""
+    content_type = str(getattr(attachment, "content_type", "") or "")
+    normalized_content_type = content_type.partition(";")[0].strip().lower()
+    if normalized_content_type and normalized_content_type != "application/octet-stream":
+        return normalized_content_type.startswith("image/")
+
+    filename = str(getattr(attachment, "filename", "") or "").strip().lower()
+    return filename.endswith(_IMAGE_FILENAME_EXTENSIONS)
+
+
+def message_has_image_attachment(message: Any) -> bool:
+    """Return whether a Discord-like message contains an image attachment."""
+    attachments = getattr(message, "attachments", None) or []
+    return any(attachment_is_image(attachment) for attachment in attachments)
+
+
 async def scan_channel_messages(
     channel: Any,
     audit_window: AuditWindow,
@@ -264,6 +302,7 @@ async def scan_channel_messages(
     *,
     max_messages: int,
     max_buffer_bytes: int,
+    message_filter: Callable[[Any], bool] | None = None,
 ) -> AuditScanResult:
     """Collect a bounded snapshot while preserving exact history semantics."""
     if max_messages < 1 or max_buffer_bytes < 1:
@@ -272,6 +311,7 @@ async def scan_channel_messages(
     rows: list[dict[str, Any]] = []
     fetched_messages = 0
     excluded_bot_messages = 0
+    excluded_filtered_messages = 0
     buffered_row_bytes = 0
     safety_limit_reason = None
 
@@ -295,6 +335,9 @@ async def scan_channel_messages(
             continue
         if not audit_window.contains(message.created_at):
             continue
+        if message_filter is not None and not message_filter(message):
+            excluded_filtered_messages += 1
+            continue
 
         row = row_builder(message, audit_window)
         row_bytes = len(
@@ -314,6 +357,7 @@ async def scan_channel_messages(
         rows=rows,
         fetched_messages=fetched_messages,
         excluded_bot_messages=excluded_bot_messages,
+        excluded_filtered_messages=excluded_filtered_messages,
         buffered_row_bytes=buffered_row_bytes,
         safety_limit_reason=safety_limit_reason,
     )
