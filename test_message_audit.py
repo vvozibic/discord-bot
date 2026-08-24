@@ -55,15 +55,15 @@ class AuditWindowTests(unittest.TestCase):
 
     def test_parses_requested_image_audit_range(self):
         window = message_audit.parse_audit_window(
-            "10/08/2026 18:30",
-            "10/08/2026 19:20",
+            "10/08/2026 19:14",
+            "11/08/2026 20:40",
             "Europe/Warsaw",
         )
 
-        self.assertEqual(window.start_utc.isoformat(), "2026-08-10T16:30:00+00:00")
+        self.assertEqual(window.start_utc.isoformat(), "2026-08-10T17:14:00+00:00")
         self.assertEqual(
             window.end_exclusive_utc.isoformat(),
-            "2026-08-10T17:21:00+00:00",
+            "2026-08-11T18:41:00+00:00",
         )
 
     def test_date_only_end_includes_entire_dst_transition_day(self):
@@ -344,8 +344,8 @@ class AuditScanTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_image_filter_keeps_text_with_image_and_excludes_other_posts(self):
         window = message_audit.parse_audit_window(
-            "10/08/2026 18:30",
-            "10/08/2026 19:20",
+            "10/08/2026 19:14",
+            "11/08/2026 20:40",
             "Europe/Warsaw",
         )
         image = SimpleNamespace(filename="proof.jpg", content_type="image/jpeg")
