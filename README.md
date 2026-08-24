@@ -51,7 +51,7 @@ timezone is `Europe/Warsaw`, and the default raffle selects five unique users:
 
 ```env
 AUDIT_CHANNEL_ID=1527375658014085292
-IMAGE_AUDIT_CHANNEL_ID=1400848157436280943
+IMAGE_AUDIT_CHANNEL_ID=1527375658014085292
 AUDIT_TIMEZONE=Europe/Warsaw
 AUDIT_WINNER_COUNT=5
 AUDIT_MAX_RANGE_DAYS=31
@@ -73,11 +73,11 @@ raffle, CSV/JSON output, permissions, and safety limits, but retains only
 messages that contain at least one image attachment. A captioned image still
 qualifies. Non-image files, link embeds, and stickers alone do not qualify.
 
-Its configured default channel is `1400848157436280943`. For the requested
+Its configured default channel is `1527375658014085292`. For the requested
 range, run:
 
 ```text
-/audit-image-senders start:"10/08/2026 18:30" end:"10/08/2026 19:20"
+/audit-image-senders start:"10/08/2026 19:14" end:"11/08/2026 20:40"
 ```
 
 The channel, timezone, and winner count can still be overridden on every run:
