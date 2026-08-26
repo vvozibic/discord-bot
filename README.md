@@ -116,3 +116,56 @@ Shorten the range or adjust `AUDIT_MAX_*` when a larger export is intentional.
 The bot needs **View Channel** and **Read Message History** in each audited
 channel, and **Message Content Intent** must remain enabled. Access follows the
 same `EXPORT_COMMAND_ROLE_ID` role gate as the bot's other export commands.
+
+## Private X direct-comment draw
+
+Members with the configured export-command role can privately select direct
+replies to an X post:
+
+```text
+/pick-x-comments post:"2077814191163924565" winner_count:2 unique_authors:true
+/pick-x-comments post:"https://x.com/example/status/2077814191163924565"
+```
+
+The response is ephemeral. The command accepts a numeric post ID or complete
+`x.com`/`twitter.com` status URL, excludes comments from the original post's
+author, and uses `secrets.SystemRandom`. With the default
+`unique_authors:true`, each eligible X account receives one entry and one of
+that account's direct comments is selected for display. Set it to `false` to
+give every eligible direct comment one entry.
+
+The command uses app-only X API authentication and full-archive search. It
+anchors the search at the original post's creation time, follows every
+`next_token`, requests no author expansions for the candidate pool, and looks
+up profiles only for the selected authors. Configure:
+
+```env
+X_BEARER_TOKEN=your_x_app_bearer_token
+X_RAFFLE_MAX_REPLIES=5000
+```
+
+The X app must have access to `GET /2/tweets/search/all`. Full-archive search is
+a paid X API capability. Each available reply is a Post resource read, so set
+the reply cap deliberately. If another page exists at the configured cap, the
+command stops without drawing from a partial candidate list. Deleted,
+protected, or withheld replies that X does not return cannot be included.
+
+To prevent invisible rerolls, the first completed result is stored in the bot
+database before it is displayed. Running `/pick-x-comments` again returns the
+current saved result without calling X or selecting again, even when different
+options are supplied. The audit row stores the candidate comment IDs, selected
+IDs, candidate-list SHA-256, requester, guild, settings, and result.
+
+An intentional replacement must use:
+
+```text
+/redraw-x-comments post:"2077814191163924565" reason:"Original winner declined"
+```
+
+The redraw command requires the export-command role plus Discord's **Manage
+Server** permission. It preserves the saved winner count and unique-author
+rule, records the requester and mandatory reason in a new audit row, and makes
+that redraw the current result returned by later `/pick-x-comments` calls.
+
+Before using the command for compensated engagement, confirm that the campaign
+complies with the current X Developer Policy and applicable promotion rules.

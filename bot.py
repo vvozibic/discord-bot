@@ -10,16 +10,15 @@ import os
 import json
 import time
 import tempfile
-import secrets
 import urllib.parse
 import hashlib
 import base64
-import aiohttp
 import hmac
 import campaign_link_report
 import channel_contributor_report
 import message_audit
 import database
+import x_comment_raffle
 from datetime import datetime, timezone, timedelta
 from discord.ui.media_gallery import MediaGalleryItem
 from profile_card import (
@@ -41,6 +40,22 @@ X_CLIENT_ID = getattr(config, "X_CLIENT_ID", os.getenv("X_CLIENT_ID", "")).strip
 X_CLIENT_SECRET = getattr(config, "X_CLIENT_SECRET", os.getenv("X_CLIENT_SECRET", "")).strip()
 X_REDIRECT_URI = getattr(config, "X_REDIRECT_URI", os.getenv("X_REDIRECT_URI", "")).strip()
 X_SCOPES = getattr(config, "X_SCOPES", os.getenv("X_SCOPES", "users.read tweet.read")).strip()
+X_BEARER_TOKEN = getattr(
+    config,
+    "X_BEARER_TOKEN",
+    os.getenv("X_BEARER_TOKEN", ""),
+).strip()
+X_RAFFLE_MAX_REPLIES = max(
+    1,
+    int(
+        getattr(
+            config,
+            "X_RAFFLE_MAX_REPLIES",
+            os.getenv("X_RAFFLE_MAX_REPLIES", "5000"),
+        )
+        or 5000
+    ),
+)
 
 # ---- Signed link settings ----
 LINK_SECRET = getattr(config, "LINK_SECRET", os.getenv("LINK_SECRET", "default-secret-change-me")).strip()
@@ -2620,6 +2635,336 @@ async def _run_message_audit_command(
             f"Discord could not complete the audit: {exc}",
             ephemeral=True,
         )
+
+
+def _x_draw_text(value: str, limit: int) -> str:
+    text = " ".join((value or "").split()) or "[No visible text]"
+    text = discord.utils.escape_mentions(discord.utils.escape_markdown(text))
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 1)].rstrip()}…"
+
+
+def build_x_comment_draw_embed(
+    draw: x_comment_raffle.XCommentDraw,
+    *,
+    reused: bool = False,
+    is_redraw: bool = False,
+    redraw_reason: str | None = None,
+    option_mismatch: bool = False,
+) -> discord.Embed:
+    post_url = f"https://x.com/i/web/status/{draw.post_id}"
+    selection_rule = (
+        "one entry per unique X author"
+        if draw.unique_authors
+        else "one entry per eligible direct comment"
+    )
+    status = "Authorized redraw" if is_redraw else "Initial draw"
+    if reused:
+        status = (
+            "Saved redraw returned — no reroll or X API read occurred"
+            if is_redraw
+            else "Saved draw returned — no reroll or X API read occurred"
+        )
+
+    description = (
+        f"**Post:** [`{draw.post_id}`]({post_url})\n"
+        f"**Eligible direct comments:** {draw.eligible_comment_count:,}\n"
+        f"**Unique eligible authors:** {draw.unique_author_count:,}\n"
+        f"**Selection rule:** {selection_rule}\n"
+        f"**Status:** {status}"
+    )
+    if option_mismatch:
+        description += (
+            "\n\nThe requested options differ from the saved draw, so the saved "
+            "winner count and selection rule were retained."
+        )
+    if redraw_reason:
+        description += f"\n**Redraw reason:** {_x_draw_text(redraw_reason, 300)}"
+
+    try:
+        embed_timestamp = datetime.fromisoformat(
+            draw.drawn_at_utc.replace("Z", "+00:00")
+        )
+    except ValueError:
+        embed_timestamp = None
+
+    embed = discord.Embed(
+        title="X Comment Redraw" if is_redraw else "X Comment Draw",
+        description=description,
+        url=post_url,
+        color=0xFEE75C if is_redraw else 0x57F287,
+        timestamp=embed_timestamp,
+    )
+    for index, winner in enumerate(draw.winners, start=1):
+        if winner.username:
+            winner_label = f"@{_x_draw_text(winner.username, 50)}"
+        elif winner.name:
+            winner_label = _x_draw_text(winner.name, 80)
+        else:
+            winner_label = f"X user {winner.author_id}"
+        comment_url = f"https://x.com/i/web/status/{winner.comment_id}"
+        embed.add_field(
+            name=f"{index}. {winner_label}",
+            value=(
+                f"“{_x_draw_text(winner.text, 320)}”\n"
+                f"[View comment]({comment_url})"
+            ),
+            inline=False,
+        )
+
+    embed.set_footer(
+        text=(
+            f"Draw ID: {draw.draw_id} • "
+            f"Candidate SHA-256: {draw.candidate_hash}"
+        )
+    )
+    return embed
+
+
+def _x_draw_record(
+    draw: x_comment_raffle.XCommentDraw,
+    interaction: discord.Interaction,
+    *,
+    is_redraw: bool,
+    redraw_reason: str | None = None,
+) -> dict[str, object]:
+    drawn_at = datetime.fromisoformat(draw.drawn_at_utc.replace("Z", "+00:00"))
+    return {
+        "draw_id": draw.draw_id,
+        "post_id": draw.post_id,
+        "is_redraw": is_redraw,
+        "winner_count": draw.winner_count,
+        "unique_authors": draw.unique_authors,
+        "original_author_id": draw.original_author_id,
+        "eligible_comment_count": draw.eligible_comment_count,
+        "unique_author_count": draw.unique_author_count,
+        "candidate_comment_ids": list(draw.candidate_comment_ids),
+        "selected_comment_ids": list(draw.selected_comment_ids),
+        "candidate_hash": draw.candidate_hash,
+        "result": draw.to_dict(),
+        "requested_by_discord_id": str(interaction.user.id),
+        "requested_by_discord_username": str(interaction.user),
+        "guild_id": str(interaction.guild.id),
+        "redraw_reason": redraw_reason,
+        "created_at": int(drawn_at.timestamp()),
+    }
+
+
+async def _load_saved_x_draw(post_id: str):
+    stored = await database.get_latest_x_comment_draw(post_id)
+    if not stored:
+        return None, None
+    return stored, x_comment_raffle.XCommentDraw.from_dict(stored["result"])
+
+
+@tree.command(
+    name="pick-x-comments",
+    description="Privately select random direct replies under an X post",
+)
+@discord.app_commands.describe(
+    post="X post ID or full X post URL",
+    winner_count="Number of comments to select (default 2, maximum 10)",
+    unique_authors="Give every X account only one raffle entry",
+)
+@discord.app_commands.guild_only()
+async def pick_x_comments_cmd(
+    interaction: discord.Interaction,
+    post: str,
+    winner_count: int = 2,
+    unique_authors: bool = True,
+):
+    if not await require_export_command_role(interaction):
+        return
+
+    if not 1 <= winner_count <= 10:
+        await interaction.response.send_message(
+            "`winner_count` must be between 1 and 10.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        post_id = x_comment_raffle.parse_x_post_id(post)
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    try:
+        stored, saved_draw = await _load_saved_x_draw(post_id)
+    except Exception as exc:
+        print(f"Could not load saved X draw for {post_id}: {exc}")
+        await interaction.followup.send(
+            "The draw audit database is unavailable. No raffle was performed.",
+            ephemeral=True,
+        )
+        return
+
+    if stored and saved_draw:
+        await interaction.followup.send(
+            embed=build_x_comment_draw_embed(
+                saved_draw,
+                reused=True,
+                is_redraw=bool(stored["is_redraw"]),
+                redraw_reason=stored.get("redraw_reason"),
+                option_mismatch=(
+                    saved_draw.winner_count != winner_count
+                    or saved_draw.unique_authors != unique_authors
+                ),
+            ),
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        return
+
+    try:
+        draw = await x_comment_raffle.run_x_comment_draw(
+            bearer_token=X_BEARER_TOKEN,
+            post_id=post_id,
+            winner_count=winner_count,
+            unique_authors=unique_authors,
+            max_replies=X_RAFFLE_MAX_REPLIES,
+        )
+    except x_comment_raffle.XCommentRaffleError as exc:
+        await interaction.followup.send(
+            f"X comment draw stopped: {exc}",
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        return
+
+    try:
+        stored = await database.save_x_comment_draw(
+            _x_draw_record(draw, interaction, is_redraw=False)
+        )
+        if not stored:
+            raise RuntimeError("The saved draw could not be read back.")
+        canonical_draw = x_comment_raffle.XCommentDraw.from_dict(stored["result"])
+    except Exception as exc:
+        print(f"Could not save X draw {draw.draw_id}: {exc}")
+        await interaction.followup.send(
+            "The winners were selected but could not be saved, so they were not "
+            "revealed. No auditable draw was completed.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.followup.send(
+        embed=build_x_comment_draw_embed(
+            canonical_draw,
+            reused=canonical_draw.draw_id != draw.draw_id,
+        ),
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@tree.command(
+    name="redraw-x-comments",
+    description="Auditably redraw the saved winners for an X post",
+)
+@discord.app_commands.describe(
+    post="X post ID or full X post URL",
+    reason="Required audit reason for replacing the current winners",
+)
+@discord.app_commands.guild_only()
+async def redraw_x_comments_cmd(
+    interaction: discord.Interaction,
+    post: str,
+    reason: str,
+):
+    if not await require_export_command_role(interaction):
+        return
+
+    permissions = getattr(interaction.user, "guild_permissions", None)
+    if not permissions or not permissions.manage_guild:
+        await interaction.response.send_message(
+            "You also need the **Manage Server** permission to redraw X winners.",
+            ephemeral=True,
+        )
+        return
+
+    reason = " ".join((reason or "").split())
+    if not 3 <= len(reason) <= 300:
+        await interaction.response.send_message(
+            "The redraw reason must be between 3 and 300 characters.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        post_id = x_comment_raffle.parse_x_post_id(post)
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    try:
+        stored, current_draw = await _load_saved_x_draw(post_id)
+    except Exception as exc:
+        print(f"Could not load X draw for redraw of {post_id}: {exc}")
+        await interaction.followup.send(
+            "The draw audit database is unavailable. No redraw was performed.",
+            ephemeral=True,
+        )
+        return
+    if not stored or not current_draw:
+        await interaction.followup.send(
+            "No saved draw exists for this post. Run `/pick-x-comments` first.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        redraw = await x_comment_raffle.run_x_comment_draw(
+            bearer_token=X_BEARER_TOKEN,
+            post_id=post_id,
+            winner_count=current_draw.winner_count,
+            unique_authors=current_draw.unique_authors,
+            max_replies=X_RAFFLE_MAX_REPLIES,
+        )
+    except x_comment_raffle.XCommentRaffleError as exc:
+        await interaction.followup.send(
+            f"X comment redraw stopped: {exc}",
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        return
+
+    try:
+        saved_redraw = await database.save_x_comment_draw(
+            _x_draw_record(
+                redraw,
+                interaction,
+                is_redraw=True,
+                redraw_reason=reason,
+            )
+        )
+        if not saved_redraw:
+            raise RuntimeError("The saved redraw could not be read back.")
+        canonical_redraw = x_comment_raffle.XCommentDraw.from_dict(
+            saved_redraw["result"]
+        )
+    except Exception as exc:
+        print(f"Could not save X redraw {redraw.draw_id}: {exc}")
+        await interaction.followup.send(
+            "The redraw could not be saved, so its winners were not revealed.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.followup.send(
+        embed=build_x_comment_draw_embed(
+            canonical_redraw,
+            is_redraw=True,
+            redraw_reason=reason,
+        ),
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
 
 
 @tree.command(

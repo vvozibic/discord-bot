@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,6 +24,11 @@ X_CLIENT_ID = os.getenv("X_CLIENT_ID", "")
 X_CLIENT_SECRET = os.getenv("X_CLIENT_SECRET", "")
 X_REDIRECT_URI = os.getenv("X_REDIRECT_URI", "")
 X_SCOPES = os.getenv("X_SCOPES", "users.read tweet.read")
+X_BEARER_TOKEN = (os.getenv("X_BEARER_TOKEN", "") or "").strip()
+X_RAFFLE_MAX_REPLIES = max(
+    1,
+    int(os.getenv("X_RAFFLE_MAX_REPLIES", "5000") or 5000),
+)
 
 # Callback Server Settings
 OAUTH_HOST = os.getenv("OAUTH_HOST", "0.0.0.0")
