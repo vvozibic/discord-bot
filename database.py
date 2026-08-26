@@ -1,5 +1,7 @@
+import json
 import os
 import time
+
 import aiosqlite
 
 try:
@@ -79,6 +81,42 @@ async def _init_postgres():
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_verification_history_discord_id_ts ON verification_history (discord_id, timestamp DESC)"
         )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS x_comment_draws (
+                draw_id TEXT PRIMARY KEY,
+                post_id TEXT NOT NULL,
+                is_redraw BOOLEAN NOT NULL DEFAULT FALSE,
+                winner_count INTEGER NOT NULL,
+                unique_authors BOOLEAN NOT NULL,
+                original_author_id TEXT NOT NULL,
+                eligible_comment_count INTEGER NOT NULL,
+                unique_author_count INTEGER NOT NULL,
+                candidate_comment_ids_json TEXT NOT NULL,
+                selected_comment_ids_json TEXT NOT NULL,
+                candidate_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                requested_by_discord_id TEXT NOT NULL,
+                requested_by_discord_username TEXT,
+                guild_id TEXT NOT NULL,
+                redraw_reason TEXT,
+                created_at BIGINT NOT NULL
+            )
+            """
+        )
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_x_comment_draws_initial_post
+            ON x_comment_draws (post_id)
+            WHERE is_redraw = FALSE
+            """
+        )
+        await conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_x_comment_draws_post_created
+            ON x_comment_draws (post_id, created_at DESC)
+            """
+        )
 
 
 async def _init_sqlite():
@@ -127,6 +165,42 @@ async def _init_sqlite():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_verification_history_discord_id_ts ON verification_history (discord_id, timestamp DESC)"
+        )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS x_comment_draws (
+                draw_id TEXT PRIMARY KEY,
+                post_id TEXT NOT NULL,
+                is_redraw INTEGER NOT NULL DEFAULT 0,
+                winner_count INTEGER NOT NULL,
+                unique_authors INTEGER NOT NULL,
+                original_author_id TEXT NOT NULL,
+                eligible_comment_count INTEGER NOT NULL,
+                unique_author_count INTEGER NOT NULL,
+                candidate_comment_ids_json TEXT NOT NULL,
+                selected_comment_ids_json TEXT NOT NULL,
+                candidate_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                requested_by_discord_id TEXT NOT NULL,
+                requested_by_discord_username TEXT,
+                guild_id TEXT NOT NULL,
+                redraw_reason TEXT,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        await db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_x_comment_draws_initial_post
+            ON x_comment_draws (post_id)
+            WHERE is_redraw = 0
+            """
+        )
+        await db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_x_comment_draws_post_created
+            ON x_comment_draws (post_id, created_at DESC)
+            """
         )
         async with db.execute("PRAGMA table_info(x_accounts)") as cursor:
             columns = {row[1] for row in await cursor.fetchall()}
@@ -402,3 +476,172 @@ async def upsert_user_identity(discord_id: str, discord_username: str):
             (discord_id, discord_username, now_ts),
         )
         await db.commit()
+
+
+def _decode_x_comment_draw(row):
+    if not row:
+        return None
+    value = dict(row)
+    value["is_redraw"] = bool(value["is_redraw"])
+    value["unique_authors"] = bool(value["unique_authors"])
+    value["candidate_comment_ids"] = json.loads(
+        value.pop("candidate_comment_ids_json")
+    )
+    value["selected_comment_ids"] = json.loads(
+        value.pop("selected_comment_ids_json")
+    )
+    value["result"] = json.loads(value.pop("result_json"))
+    return value
+
+
+async def get_initial_x_comment_draw(post_id: str):
+    """Return the immutable first draw for a post, if one exists."""
+    if USE_POSTGRES:
+        pool = await _ensure_pg_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM x_comment_draws
+                WHERE post_id = $1 AND is_redraw = FALSE
+                LIMIT 1
+                """,
+                post_id,
+            )
+            return _decode_x_comment_draw(row)
+
+    async with aiosqlite.connect(DB_FILE) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM x_comment_draws
+            WHERE post_id = ? AND is_redraw = 0
+            LIMIT 1
+            """,
+            (post_id,),
+        ) as cursor:
+            return _decode_x_comment_draw(await cursor.fetchone())
+
+
+async def get_latest_x_comment_draw(post_id: str):
+    """Return the currently effective draw, including an authorized redraw."""
+    if USE_POSTGRES:
+        pool = await _ensure_pg_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM x_comment_draws
+                WHERE post_id = $1
+                ORDER BY created_at DESC, draw_id DESC
+                LIMIT 1
+                """,
+                post_id,
+            )
+            return _decode_x_comment_draw(row)
+
+    async with aiosqlite.connect(DB_FILE) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM x_comment_draws
+            WHERE post_id = ?
+            ORDER BY created_at DESC, draw_id DESC
+            LIMIT 1
+            """,
+            (post_id,),
+        ) as cursor:
+            return _decode_x_comment_draw(await cursor.fetchone())
+
+
+async def get_x_comment_draw(draw_id: str):
+    if USE_POSTGRES:
+        pool = await _ensure_pg_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM x_comment_draws WHERE draw_id = $1",
+                draw_id,
+            )
+            return _decode_x_comment_draw(row)
+
+    async with aiosqlite.connect(DB_FILE) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM x_comment_draws WHERE draw_id = ?",
+            (draw_id,),
+        ) as cursor:
+            return _decode_x_comment_draw(await cursor.fetchone())
+
+
+async def save_x_comment_draw(data: dict):
+    """Persist a draw and return the canonical stored row.
+
+    Initial draws use a unique post constraint. If two commands race, only the
+    first result is retained and both callers receive that same stored result.
+    Redraws always receive their own audit row.
+    """
+    result = data["result"]
+    values = (
+        data["draw_id"],
+        data["post_id"],
+        bool(data.get("is_redraw")),
+        int(data["winner_count"]),
+        bool(data["unique_authors"]),
+        data["original_author_id"],
+        int(data["eligible_comment_count"]),
+        int(data["unique_author_count"]),
+        json.dumps(data["candidate_comment_ids"], separators=(",", ":")),
+        json.dumps(data["selected_comment_ids"], separators=(",", ":")),
+        data["candidate_hash"],
+        json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+        data["requested_by_discord_id"],
+        data.get("requested_by_discord_username"),
+        data["guild_id"],
+        data.get("redraw_reason"),
+        int(data.get("created_at", _now())),
+    )
+
+    if USE_POSTGRES:
+        pool = await _ensure_pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO x_comment_draws (
+                    draw_id, post_id, is_redraw, winner_count, unique_authors,
+                    original_author_id, eligible_comment_count, unique_author_count,
+                    candidate_comment_ids_json, selected_comment_ids_json,
+                    candidate_hash, result_json, requested_by_discord_id,
+                    requested_by_discord_username, guild_id, redraw_reason, created_at
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                    $13, $14, $15, $16, $17
+                )
+                ON CONFLICT DO NOTHING
+                """,
+                *values,
+            )
+        if data.get("is_redraw"):
+            return await get_x_comment_draw(data["draw_id"])
+        return await get_initial_x_comment_draw(data["post_id"])
+
+    sqlite_values = list(values)
+    sqlite_values[2] = int(sqlite_values[2])
+    sqlite_values[4] = int(sqlite_values[4])
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO x_comment_draws (
+                draw_id, post_id, is_redraw, winner_count, unique_authors,
+                original_author_id, eligible_comment_count, unique_author_count,
+                candidate_comment_ids_json, selected_comment_ids_json,
+                candidate_hash, result_json, requested_by_discord_id,
+                requested_by_discord_username, guild_id, redraw_reason, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            tuple(sqlite_values),
+        )
+        await db.commit()
+
+    if data.get("is_redraw"):
+        return await get_x_comment_draw(data["draw_id"])
+    return await get_initial_x_comment_draw(data["post_id"])
