@@ -115,9 +115,9 @@ IMAGE_AUDIT_CHANNEL_ID = int(
     getattr(
         config,
         "IMAGE_AUDIT_CHANNEL_ID",
-        os.getenv("IMAGE_AUDIT_CHANNEL_ID", "1527375658014085292"),
+        os.getenv("IMAGE_AUDIT_CHANNEL_ID", "1400848157436280943"),
     )
-    or 1527375658014085292
+    or 1400848157436280943
 )
 AUDIT_TIMEZONE = (
     getattr(config, "AUDIT_TIMEZONE", os.getenv("AUDIT_TIMEZONE", "Europe/Warsaw"))
