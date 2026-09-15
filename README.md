@@ -42,6 +42,42 @@ npm run dev
 - The worker is stubbed and returns deterministic fake results based on the user ID + link. Replace the stub worker with your real job processor when ready.
 - The bot role must be above the target roles in the Discord role hierarchy to assign them.
 
+## Automatic member welcomes
+
+When Discord posts a native join notification (`MessageType.new_member`) in
+`1401891894329479278`, the bot welcomes that notification's author in
+`1421187164187791381`. One message contains:
+
+- `Hey , @member, welcome to Mindo AI` with an actual mention of the joining user.
+- The member's current Discord display avatar as a thumbnail (including the
+  server avatar or Discord's default avatar when appropriate).
+- The supplied Mindo Poker image, bundled as `assets/mindo-welcome.png`, below
+  the greeting in the same message.
+
+The channel IDs work without additional configuration and can be overridden:
+
+```dotenv
+WELCOME_SOURCE_CHANNEL_ID=1401891894329479278
+WELCOME_TARGET_CHANNEL_ID=1421187164187791381
+```
+
+Set either ID to `0` to disable welcomes. The destination must be a text channel
+in the same server. In **Server Settings → Overview**, set the system messages
+channel to the source channel and enable Discord's random welcome messages for
+new members. The bot needs **View Channel** in the source channel and **View
+Channel**, **Send Messages**, **Attach Files**, and **Embed Links** in the
+destination. This uses the existing guild message events; Server Members Intent
+is not required.
+
+Only new system join notifications for human users trigger a welcome. Ordinary
+chat, other bots' log messages, boosts, and message edits do not. Old channel
+history is not replayed when the bot starts. Repeated delivery of the same join
+message is ignored for the last 4,096 successful sends in the running process;
+a later rejoin with a new system message receives a new welcome. Missing images
+and Discord permission/send errors are logged without posting a partial welcome.
+
+Run the welcome checks with `python -m unittest test_member_welcome -v`.
+
 ## Configurable message audit and raffle
 
 Members with the configured export-command role can run `/audit-messages` to
