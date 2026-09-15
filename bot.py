@@ -17,6 +17,7 @@ import hmac
 import campaign_link_report
 import channel_contributor_report
 import message_audit
+from member_welcome import MemberWelcomeRelay
 import database
 import x_comment_raffle
 from datetime import datetime, timezone, timedelta
@@ -971,6 +972,10 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
+member_welcome_relay = MemberWelcomeRelay(
+    source_channel_id=config.WELCOME_SOURCE_CHANNEL_ID,
+    target_channel_id=config.WELCOME_TARGET_CHANNEL_ID,
+)
 
 SYNCED_COMMANDS = {}
 PERSISTENT_VIEWS_REGISTERED = False
@@ -3327,6 +3332,7 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 # -----------------------------
 @client.event
 async def on_message(message: discord.Message):
+    await member_welcome_relay.handle_message(message)
     await maybe_delete_duplicate_believer_x_proof(message)
 
 @client.event
