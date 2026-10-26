@@ -134,6 +134,9 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     syncPause();
   }
   function start(config, unlock = true) {
+    if (requireProfile && (!social.connected || !config.ticket)) {
+      onNotice('Connect your Discord profile to play a server-verified run.'); return;
+    }
     if (unlock) audio.unlock();
     onStart(config); document.querySelector('#world').focus();
   }
