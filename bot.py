@@ -18,6 +18,7 @@ import campaign_link_report
 import channel_contributor_report
 import message_audit
 from member_welcome import MemberWelcomeRelay
+from game_launcher import register_game_command
 import database
 import x_comment_raffle
 from datetime import datetime, timezone, timedelta
@@ -972,6 +973,7 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
+register_game_command(tree)
 member_welcome_relay = MemberWelcomeRelay(
     source_channel_id=config.WELCOME_SOURCE_CHANNEL_ID,
     target_channel_id=config.WELCOME_TARGET_CHANNEL_ID,
