@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#172723" />
+    <link rel="icon" type="image/png" href="/assets/pulse-logo.png" />
+    <title>Forest Trail — a little adventure</title>
+  </head>
+  <body>
+    <section id="discord-launch-required" class="discord-launch-required" hidden>
+      <img src="/assets/pulse-logo.png" width="64" height="64" alt="" />
+      <h1>Play Forest Trail in Discord</h1>
+      <p>Open Mindo AI's <strong>#beta-testing</strong> channel and use <strong>/play</strong> or the game panel.</p>
+      <p>Your progress and verified scores are saved to your Discord profile on the server.</p>
+    </section>
+    <main class="game">
+      <header class="topline">
+        <div class="brand"><img class="brand-mark" src="/assets/pulse-logo.png" width="32" height="32" alt="" /><div><h1>Forest Trail</h1><p>A LITTLE ADVENTURE</p></div></div>
+        <div class="account-area">
+          <span id="connection" class="connection">Connecting…</span>
+          <button id="connect-profile" class="profile-connect" type="button" disabled>Connect profile</button>
+          <div id="player-profile" class="player-profile" hidden><span id="player-initial" class="avatar-fallback" aria-hidden="true"></span><img id="player-avatar" width="28" height="28" alt="" hidden /><span id="player-name"></span><button id="disconnect-profile" type="button" aria-label="Disconnect Discord profile" title="Disconnect profile">×</button></div>
+        </div>
+      </header>
+      <section class="quest-bar" aria-label="Quest">
+        <div><img class="item-icon" src="/assets/pulse-logo.png" width="22" height="22" alt="" /><span id="quest-label">Find 6 coins. Return to the portal.</span></div>
+        <strong id="item-count" aria-live="polite">0 / 6</strong>
+      </section>
+      <section class="run-hud" aria-label="Expedition status">
+        <span id="run-map">Level 1</span>
+        <span id="run-clock">No time limit</span>
+        <span id="run-score">0 pts</span>
+        <span id="run-bonus">Bonus 0 / 2</span>
+        <div id="run-integrity" class="health-meter" data-health="healthy">
+          <span class="health-label">Health</span>
+          <span id="health-value" class="health-value">100 HP</span>
+          <div id="health-progress" class="health-track" role="progressbar" aria-label="Health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="100 of 100 health points">
+            <span id="health-chip" class="health-chip" aria-hidden="true"></span>
+            <span id="health-fill" class="health-fill" aria-hidden="true"></span>
+          </div>
+        </div>
+        <span id="health-announcement" class="visually-hidden" aria-live="polite" aria-atomic="true"></span>
+        <span id="run-exit" hidden></span>
+        <span id="run-heat" hidden></span>
+      </section>
+      <section class="world-frame" aria-label="Game area">
+        <canvas id="world" width="480" height="288" tabindex="0" aria-label="Game location. Move with WASD, arrow keys, joystick, or by tapping the ground.">Your browser needs Canvas support to play this game.</canvas>
+        <div class="location-label"><i></i> QUIET GROVE</div>
+        <button id="character-button" class="character-button" type="button" aria-haspopup="dialog" aria-controls="character-dialog" aria-label="Choose character" title="Choose character"><canvas id="character-portrait" width="32" height="40" aria-hidden="true"></canvas><span>Character</span></button>
+        <div id="toast" class="toast" role="status" aria-live="polite">Collect the pulse coins. Tap the ground to walk.</div>
+        <button id="interact" class="interact" type="button" aria-label="Talk to elder" hidden>Talk to elder <span aria-hidden="true">✦</span></button>
+        <button id="pulse" class="shield-button" type="button" aria-label="Activate shield" title="Activate shield (Space)" hidden>
+          <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m13 8-4 5h5l-3 4"/></svg>
+          <span class="shield-label">Shield</span><span id="shield-charge" class="shield-charge" aria-hidden="true">Locked</span>
+        </button>
+        <button id="dash-button" class="dash-button" type="button" aria-label="Dash ready. Move and press Shift or tap to dash" title="Move + Shift to dash" hidden>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m13 4 7 8-7 8m-5-8h12M3 7h5M2 12h3M3 17h5"/></svg>
+          <span class="dash-label">Dash</span><span id="dash-charge" class="dash-charge" aria-hidden="true">Ready</span>
+        </button>
+        <button id="magic-button" class="magic-button" type="button" aria-label="Cast magic at hunter" title="Cast magic at hunter (F)" hidden>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 20 9-12m-3-3 3 3 3-3m-4-3 1 6 6 1-6 1-1 6-1-6-6-1 6-1z"/></svg>
+          <span class="magic-label">Magic</span><span id="magic-charge" class="magic-charge" aria-hidden="true">Coin 3</span>
+        </button>
+        <div id="joystick" class="joystick" role="group" tabindex="0" aria-label="Movement joystick. Drag to move, or use the arrow keys.">
+          <span class="joystick-track" aria-hidden="true"></span>
+          <span class="joystick-thumb" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 3-3 3 3M12 2v5m-3 12 3 3 3-3m-3 3v-5M5 9l-3 3 3 3m-3-3h5m12-3 3 3-3 3m3-3h-5"/><circle cx="12" cy="12" r="2"/></svg></span>
+        </div>
+        <div class="dpad" aria-label="Movement controls">
+          <button class="up" type="button" data-move="up" aria-label="Move up">↑</button>
+          <button class="left" type="button" data-move="left" aria-label="Move left">←</button>
+          <button class="down" type="button" data-move="down" aria-label="Move down">↓</button>
+          <button class="right" type="button" data-move="right" aria-label="Move right">→</button>
+        </div>
+        <div id="victory" class="victory" hidden>
+          <div>
+            <span id="result-symbol" class="victory-symbol" aria-hidden="true">✦</span>
+            <h2 id="result-title">The trail is open!</h2>
+            <p id="result-copy">All pulse coins found.<br />The portal shines again.</p>
+            <div class="result-stats"><strong id="result-score">0 pts</strong><strong id="finish-time"></strong></div>
+            <p id="result-detail" class="result-detail"></p>
+            <p id="online-result" class="result-detail" role="status" hidden></p>
+            <div class="result-actions"><button id="play-again" type="button">Next level</button><button id="retry-run" class="secondary-button" type="button">Replay level</button></div>
+          </div>
+        </div>
+      </section>
+      <footer>
+        <span class="control-hints"><span class="keyboard-hint"><kbd>WASD</kbd> / <kbd>↑ ← ↓ →</kbd> move <span class="separator">·</span> <kbd>Space</kbd> shield<span id="dash-hint" hidden> <span class="separator">·</span> Move + <kbd>Shift</kbd> dash</span><span id="magic-hint" hidden> <span class="separator">·</span> <kbd>F</kbd> magic</span> <span class="separator">·</span> </span><span class="pointer-hint">Click to walk</span><span class="joystick-hint"><span>Drag to move</span><small>Tap buttons</small></span></span>
+        <div class="footer-actions">
+          <button id="challenge-button" class="lab-button" type="button" aria-haspopup="dialog" aria-controls="challenge-lab" title="Choose challenge mechanics">Lab</button>
+          <button id="records-button" class="icon-button" type="button" aria-label="Your records" title="Your records">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v7a4 4 0 0 1-8 0zM8 5H4v3a4 4 0 0 0 4 4M16 5h4v3a4 4 0 0 1-4 4M12 14v6M8 21h8"/></svg>
+          </button>
+          <button id="sound" class="sound-button" type="button" aria-label="Mute sound" aria-pressed="false" title="Mute sound">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="sound-waves" d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/><path class="sound-slash" d="m15 9 6 6m0-6-6 6"/></svg>
+          </button>
+          <button id="reset" type="button" title="Restart this level (R)">Restart</button>
+        </div>
+      </footer>
+    </main>
+    <dialog id="character-dialog" class="game-dialog character-dialog" aria-labelledby="character-title" aria-describedby="character-intro">
+      <div class="dialog-content">
+        <div class="dialog-eyebrow">CHOOSE YOUR EXPLORER</div>
+        <h2 id="character-title">Your character</h2>
+        <p id="character-intro" class="dialog-intro">The wizard can cast magic at the hunter.</p>
+        <div id="character-options" class="character-options" role="group" aria-label="Playable characters"></div>
+        <p id="character-status" class="visually-hidden" role="status"></p>
+        <button id="close-characters" class="primary-button" type="button">Back to trail</button>
+      </div>
+    </dialog>
+    <dialog id="elder-dialog" class="game-dialog elder-dialog" aria-labelledby="elder-title" aria-describedby="elder-copy">
+      <div class="dialog-content">
+        <div class="dialog-eyebrow">A WARD FOR THE ROAD</div>
+        <h2 id="elder-title">The Elder</h2>
+        <p id="elder-copy" class="elder-copy" aria-live="polite"></p>
+        <div class="elder-actions"><button id="elder-response" class="primary-button" type="button">Can you help me?</button><button id="close-elder" class="secondary-button" type="button">Leave</button></div>
+        <p class="elder-note">The trail pauses while you talk.</p>
+      </div>
+    </dialog>
+    <dialog id="records-dialog" class="game-dialog records-dialog" aria-labelledby="records-title">
+      <div class="dialog-content">
+        <div class="dialog-eyebrow">TRAIL JOURNAL</div>
+        <h2 id="records-title">Trail rankings</h2>
+        <p class="dialog-intro">Saved on this device.</p>
+        <div class="ranking-tabs" role="tablist" aria-label="Ranking scope"><button id="records-local-tab" type="button" role="tab" aria-selected="true" aria-controls="records-panel">This device</button><button id="records-server-tab" type="button" role="tab" aria-selected="false" aria-controls="records-panel" tabindex="-1">Shared ranking</button></div>
+        <div id="records-panel" role="tabpanel" aria-labelledby="records-local-tab">
+          <p id="records-status" class="records-status" role="status" hidden></p>
+          <ol id="records-list" class="records-list"></ol>
+          <p id="records-empty" class="records-empty">No finished expeditions yet.</p>
+          <p id="your-rank" class="your-rank" hidden></p>
+          <div class="ranking-actions"><button id="ranking-connect" class="secondary-button" type="button" hidden>Connect profile</button><button id="ranking-refresh" class="secondary-button" type="button" hidden>Refresh ranking</button></div>
+        </div>
+        <button id="close-records" class="secondary-button" type="button">Back</button>
+      </div>
+    </dialog>
+    <dialog id="challenge-lab" class="game-dialog challenge-dialog" aria-labelledby="challenge-title" aria-describedby="challenge-intro">
+      <form id="challenge-form" class="dialog-content">
+        <div class="dialog-eyebrow">BUILD YOUR GAUNTLET</div>
+        <h2 id="challenge-title">Challenge Lab</h2>
+        <p id="challenge-intro" class="dialog-intro">Choose the mechanics for your next attempt.</p>
+        <fieldset id="challenge-options" class="challenge-options"><legend class="visually-hidden">Challenge mechanics</legend></fieldset>
+        <div class="challenge-controls"><p id="challenge-note" class="challenge-note" role="status">Turn any mechanic off for custom practice.</p>
+          <div class="challenge-actions"><button id="apply-challenge" class="primary-button" type="submit">Apply &amp; restart</button><button id="close-challenge" class="secondary-button" type="button">Back</button></div>
+          <button id="restore-challenge" class="text-button" type="button">Restore all mechanics</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="/src/adventure.js"></script>
+  </body>
+</html>
