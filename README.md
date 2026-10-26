@@ -60,6 +60,9 @@ FOREST_TRAIL_GUILD_ID=1400787114333044887
 FOREST_TRAIL_TEST_CHANNEL_ID=1421187164187791381
 ```
 
+An unverified Activity also requires Discord developer/team or app-tester access.
+Server administrator permissions alone do not grant access to a private Activity.
+
 The game and its database can continue running on the laptop. Keep its local
 server and HTTPS tunnel running, and point the **game Activity's** root URL
 mapping at the current tunnel hostname. The command uses the Activity's stable
