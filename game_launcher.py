@@ -1,6 +1,8 @@
 """Forest Trail launch command for the existing Mindo bot."""
 
 from dataclasses import dataclass
+from datetime import datetime
+import logging
 import os
 import re
 from collections.abc import Mapping
@@ -14,6 +16,32 @@ DEFAULT_TEST_CHANNEL_ID = 1421187164187791381
 DEFAULT_BETA_CHANNEL_ID = 1564277364089823285
 DEFAULT_BETA_ROLE_ID = 1564276225520963726
 _SNOWFLAKE = re.compile(r"[0-9]{15,22}\Z")
+logger = logging.getLogger(__name__)
+_UNAVAILABLE_INTERACTION_CODES = {10015, 10062, 40060}
+
+
+def _interaction_age(interaction):
+    created_at = getattr(interaction, "created_at", None)
+    if not isinstance(created_at, datetime):
+        return None
+    return (discord.utils.utcnow() - created_at).total_seconds()
+
+
+def _initial_response_expired(interaction):
+    age = _interaction_age(interaction)
+    return not interaction.response.is_done() and age is not None and age >= 3
+
+
+def _log_failure(interaction, reason, error=None):
+    # Record diagnostic IDs and Discord's error code, never tokens or response bodies.
+    logger.warning(
+        "Forest Trail %s: application_id=%s interaction_id=%s guild_id=%s "
+        "channel_id=%s status=%s discord_code=%s age_seconds=%s",
+        reason, getattr(interaction, "application_id", None),
+        getattr(interaction, "id", None), getattr(interaction, "guild_id", None),
+        getattr(interaction, "channel_id", None), getattr(error, "status", None),
+        getattr(error, "code", None), _interaction_age(interaction),
+    )
 
 
 @dataclass(frozen=True)
@@ -49,8 +77,18 @@ class GameSettings:
         )
 
 async def _private_reply(interaction, content, **kwargs):
+    if _initial_response_expired(interaction):
+        _log_failure(interaction, "initial response deadline expired; no reply attempted")
+        return False
     send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
-    await send(content, ephemeral=True, allowed_mentions=discord.AllowedMentions.none(), **kwargs)
+    try:
+        await send(content, ephemeral=True, allowed_mentions=discord.AllowedMentions.none(), **kwargs)
+    except discord.HTTPException as error:
+        _log_failure(interaction, "private reply failed", error)
+        if error.code in _UNAVAILABLE_INTERACTION_CODES:
+            return False
+        raise
+    return True
 
 
 async def launch_forest_trail(interaction: discord.Interaction, settings: GameSettings | None = None):
@@ -76,11 +114,23 @@ async def launch_forest_trail(interaction: discord.Interaction, settings: GameSe
     if settings.activity_id is not None and interaction.application_id != settings.activity_id:
         await _private_reply(interaction, "Enable Forest Trail as an Activity of this bot's application. An administrator must check the Activity configuration.")
         return
+    if interaction.response.is_done() or _initial_response_expired(interaction):
+        _log_failure(interaction, "launch requires a fresh, unacknowledged interaction")
+        return
+    flags = getattr(getattr(interaction, "client", None), "application_flags", None)
+    if isinstance(flags, discord.ApplicationFlags) and not flags.embedded:
+        _log_failure(interaction, "Activities disabled; configure URL Mapping, enable Activities and restart the bot")
+        await _private_reply(interaction, "Forest Trail is not enabled as an Activity for this bot yet. Please contact an administrator.")
+        return
     # Callback 12 launches this bot's own Activity inside Discord. No website
-    # or other application's launcher is used.
+    # or other application's launcher is used. Do not defer first: the launch
+    # must itself be the initial interaction response.
     try:
         await interaction.response.launch_activity()
-    except discord.HTTPException:
+    except discord.HTTPException as error:
+        _log_failure(interaction, "Activity launch failed", error)
+        if error.code in _UNAVAILABLE_INTERACTION_CODES:
+            return
         await _private_reply(interaction, "Discord could not launch Forest Trail. Please try again shortly.")
 
 

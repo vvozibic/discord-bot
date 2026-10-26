@@ -1,4 +1,5 @@
 import ast
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -14,13 +15,20 @@ def interaction(**overrides):
     values = {
         "guild_id": 1400787114333044887,
         "channel_id": 1421187164187791381,
-        "application_id": 1470503084164644946,
+        "application_id": 1466831420575186985,
+        "id": 123456789012345678,
+        "created_at": discord.utils.utcnow(),
+        "client": SimpleNamespace(
+            application_flags=discord.ApplicationFlags(embedded=True),
+            application_info=AsyncMock(),
+        ),
         "permissions": discord.Permissions(administrator=True),
         "user": SimpleNamespace(roles=[]),
         "response": SimpleNamespace(
             is_done=Mock(return_value=False),
             send_message=AsyncMock(),
             launch_activity=AsyncMock(),
+            defer=AsyncMock(),
         ),
         "followup": SimpleNamespace(send=AsyncMock()),
     }
@@ -54,6 +62,8 @@ class LauncherTests(unittest.IsolatedAsyncioTestCase):
         await launch_forest_trail(item, GameSettings())
         item.response.launch_activity.assert_awaited_once_with()
         item.response.send_message.assert_not_awaited()
+        item.response.defer.assert_not_awaited()
+        item.client.application_info.assert_not_awaited()
 
     async def test_same_application_can_launch_activity_directly(self):
         item = interaction(application_id=1556624227212460092)
@@ -143,10 +153,120 @@ class LauncherTests(unittest.IsolatedAsyncioTestCase):
         item = interaction(application_id=1556624227212460092)
         response = SimpleNamespace(status=400, reason="Bad request")
         item.response.launch_activity.side_effect = discord.HTTPException(response, "private server response")
-        await launch_forest_trail(item, GameSettings())
+        with self.assertLogs("game_launcher", level="WARNING") as logs:
+            await launch_forest_trail(item, GameSettings())
         item.response.send_message.assert_awaited_once()
         self.assertNotIn("private server response", item.response.send_message.call_args.args[0])
+        self.assertNotIn("private server response", " ".join(logs.output))
         self.assertTrue(item.response.send_message.call_args.kwargs["ephemeral"])
+
+    async def test_disabled_activity_explains_setup_without_attempting_launch(self):
+        item = interaction(client=SimpleNamespace(
+            application_flags=discord.ApplicationFlags(embedded=False),
+        ))
+        with self.assertLogs("game_launcher", level="WARNING") as logs:
+            await launch_forest_trail(item, GameSettings())
+        item.response.launch_activity.assert_not_awaited()
+        item.response.send_message.assert_awaited_once()
+        self.assertIn("not enabled", item.response.send_message.call_args.args[0])
+        self.assertIn("URL Mapping", " ".join(logs.output))
+        self.assertIn("application_id=1466831420575186985", " ".join(logs.output))
+
+    async def test_expired_initial_response_does_not_attempt_launch_or_reply(self):
+        item = interaction(created_at=discord.utils.utcnow() - timedelta(seconds=4))
+        with self.assertLogs("game_launcher", level="WARNING"):
+            await launch_forest_trail(item, GameSettings())
+        item.response.launch_activity.assert_not_awaited()
+        item.response.send_message.assert_not_awaited()
+        item.followup.send.assert_not_awaited()
+
+    async def test_unknown_or_already_acknowledged_launch_is_not_retried(self):
+        for status, code in ((404, 10062), (400, 40060)):
+            with self.subTest(code=code):
+                item = interaction()
+                item.response.launch_activity.side_effect = discord.HTTPException(
+                    SimpleNamespace(status=status, reason="Rejected"),
+                    {"code": code, "message": "private-response-and-token"},
+                )
+                with self.assertLogs("game_launcher", level="WARNING") as logs:
+                    await launch_forest_trail(item, GameSettings())
+                item.response.send_message.assert_not_awaited()
+                item.followup.send.assert_not_awaited()
+                self.assertIn(f"discord_code={code}", " ".join(logs.output))
+                self.assertNotIn("private-response-and-token", " ".join(logs.output))
+
+    async def test_failed_error_reply_does_not_mask_original_launch_error(self):
+        item = interaction()
+        item.response.launch_activity.side_effect = discord.HTTPException(
+            SimpleNamespace(status=400, reason="Bad request"),
+            {"code": 50035, "message": "private launch response"},
+        )
+        item.response.send_message.side_effect = discord.NotFound(
+            SimpleNamespace(status=404, reason="Not found"),
+            {"code": 10062, "message": "Unknown interaction"},
+        )
+        with self.assertLogs("game_launcher", level="WARNING") as logs:
+            await launch_forest_trail(item, GameSettings())
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn("Activity launch failed", logs.output[0])
+        self.assertIn("discord_code=50035", logs.output[0])
+        self.assertIn("private reply failed", logs.output[1])
+        self.assertIn("discord_code=10062", logs.output[1])
+        self.assertNotIn("private launch response", " ".join(logs.output))
+        item.response.send_message.assert_awaited_once()
+        item.followup.send.assert_not_awaited()
+
+    async def test_launch_failure_that_outlasts_initial_deadline_is_not_replied(self):
+        item = interaction()
+
+        async def rejected_launch():
+            item.created_at = discord.utils.utcnow() - timedelta(seconds=4)
+            raise discord.HTTPException(
+                SimpleNamespace(status=400, reason="Bad request"),
+                {"code": 50035, "message": "Invalid request"},
+            )
+
+        item.response.launch_activity.side_effect = rejected_launch
+        with self.assertLogs("game_launcher", level="WARNING") as logs:
+            await launch_forest_trail(item, GameSettings())
+        self.assertIn("discord_code=50035", logs.output[0])
+        self.assertIn("deadline expired", logs.output[1])
+        item.response.send_message.assert_not_awaited()
+        item.followup.send.assert_not_awaited()
+
+    async def test_late_denial_reply_and_expired_followup_do_not_raise(self):
+        for acknowledged, code in ((False, 10062), (True, 10015)):
+            with self.subTest(acknowledged=acknowledged):
+                item = interaction(channel_id=1400848157436280943)
+                item.response.is_done.return_value = acknowledged
+                send = item.followup.send if acknowledged else item.response.send_message
+                send.side_effect = discord.NotFound(
+                    SimpleNamespace(status=404, reason="Not found"),
+                    {"code": code, "message": "Expired interaction"},
+                )
+                with self.assertLogs("game_launcher", level="WARNING"):
+                    await launch_forest_trail(item, GameSettings())
+                send.assert_awaited_once()
+                item.response.launch_activity.assert_not_awaited()
+
+    async def test_existing_acknowledgement_is_not_replaced_with_a_launch(self):
+        item = interaction()
+        item.response.is_done.return_value = True
+        with self.assertLogs("game_launcher", level="WARNING"):
+            await launch_forest_trail(item, GameSettings())
+        item.response.launch_activity.assert_not_awaited()
+        item.response.send_message.assert_not_awaited()
+        item.followup.send.assert_not_awaited()
+
+    async def test_unexpected_reply_failure_is_not_silently_ignored(self):
+        item = interaction(channel_id=1400848157436280943)
+        item.response.send_message.side_effect = discord.Forbidden(
+            SimpleNamespace(status=403, reason="Forbidden"),
+            {"code": 50013, "message": "Missing permissions"},
+        )
+        with self.assertLogs("game_launcher", level="WARNING"):
+            with self.assertRaises(discord.Forbidden):
+                await launch_forest_trail(item, GameSettings())
 
     async def test_registration_preserves_commands_and_allows_beta_members_to_invoke(self):
         client = discord.Client(intents=discord.Intents.none())
