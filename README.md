@@ -42,6 +42,45 @@ npm run dev
 - The worker is stubbed and returns deterministic fake results based on the user ID + link. Replace the stub worker with your real job processor when ready.
 - The bot role must be above the target roles in the Discord role hierarchy to assign them.
 
+## Forest Trail mini-game
+
+`/play` replies privately with a **Play Forest Trail** button. The command is
+part of this existing bot and reuses the Forest Trail Discord Activity already
+created for the game. It needs no new bot token and no additional privileged
+intents. Existing verification, reports, welcomes and support commands keep
+their current configuration.
+
+The initial release is restricted at both command registration and runtime to
+administrators in Mindo AI's `#admin-only` channel. The defaults are:
+
+```dotenv
+FOREST_TRAIL_ENABLED=true
+FOREST_TRAIL_ACTIVITY_ID=1556624227212460092
+FOREST_TRAIL_GUILD_ID=1400787114333044887
+FOREST_TRAIL_TEST_CHANNEL_ID=1421187164187791381
+```
+
+An unverified Activity also requires Discord developer/team or app-tester access.
+Server administrator permissions alone do not grant access to a private Activity.
+
+The game and its database can continue running on the laptop. Keep its local
+server and HTTPS tunnel running, and point the **game Activity's** root URL
+mapping at the current tunnel hostname. The command uses the Activity's stable
+Discord URL, so a tunnel change does not require changing the bot's command.
+
+Deploy this code through the bot's existing startup process. Its existing
+`on_ready` command sync registers `/play`; no separate interaction endpoint or
+new login is needed for this bot. `FOREST_TRAIL_ENABLED=false` disables the
+launcher without affecting other commands. The runtime channel and administrator
+checks also apply when a server administrator customizes command permissions.
+
+Discord's native launch callback opens only the responding application's own
+Activity. When this bot and the configured Activity have different application
+IDs, the button opens the existing Activity instead. When they match, `/play`
+uses Discord's native launch callback directly.
+
+Validation: `python -m unittest discover -s . -p 'test_*.py'`.
+
 ## Automatic member welcomes
 
 When Discord posts a native join notification (`MessageType.new_member`) in
