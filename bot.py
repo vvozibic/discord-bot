@@ -18,7 +18,7 @@ import campaign_link_report
 import channel_contributor_report
 import message_audit
 from member_welcome import MemberWelcomeRelay
-from game_launcher import register_game_command
+from game_launcher import ForestTrailView, register_game_command
 import database
 import x_comment_raffle
 from datetime import datetime, timezone, timedelta
@@ -3353,6 +3353,7 @@ async def on_ready():
         client.add_view(FAQView())
         client.add_view(LegacyFAQView())
         client.add_view(BelieverCampaignView())
+        client.add_view(ForestTrailView())
         PERSISTENT_VIEWS_REGISTERED = True
         print("Persistent views registered.")
 

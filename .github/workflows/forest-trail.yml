@@ -1,0 +1,50 @@
+name: Forest Trail validation
+
+on:
+  push:
+    paths: ['game/**', 'game_launcher.py', 'test_game_launcher.py', '.github/workflows/forest-trail.yml']
+  pull_request:
+    paths: ['game/**', 'game_launcher.py', 'test_game_launcher.py', '.github/workflows/forest-trail.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  activity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+      - run: npm ci
+        working-directory: game
+      - run: npm run build
+        working-directory: game
+      - run: npm test
+        working-directory: game
+      - run: docker build --tag forest-trail-ci game
+      - name: Check production container and persistent volume configuration
+        run: |
+          docker run --detach --name forest-trail-ci --user 0:0 --publish 127.0.0.1:5179:5179 --mount type=volume,source=forest-trail-ci-data,target=/data --env DISCORD_CLIENT_ID=1470503084164644946 --env DISCORD_CLIENT_SECRET=ci-only-secret --env GAME_ALLOWED_GUILD_ID=1400787114333044887 --env GAME_BETA_ROLE_ID=1564276225520963726 --env RAILWAY_ENVIRONMENT_ID=ci --env RAILWAY_VOLUME_MOUNT_PATH=/data forest-trail-ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5179/healthz; then exit 0; fi
+            sleep 1
+          done
+          docker logs forest-trail-ci
+          exit 1
+  launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'discord.py>=2.6'
+      - run: python -m unittest test_game_launcher

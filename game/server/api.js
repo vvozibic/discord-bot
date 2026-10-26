@@ -1,0 +1,162 @@
+import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypto';
+import { openDatabase, leaderboard } from './database.js';
+import { createDiscordAuth } from './discord-auth.js';
+import { createLevelDirector, PROGRESS_KEY } from '../src/level-director.js';
+import { replayRun } from './replay.js';
+import { createDiscordBot } from './bot/interactions.js';
+
+class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
+const LIMIT = 1024 * 1024;
+async function jsonBody(request) {
+  if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError(415, 'JSON is required');
+  const chunks = []; let length = 0;
+  for await (const chunk of request) {
+    length += chunk.length;
+    if (length > LIMIT) throw new ApiError(413, 'Request is too large');
+    chunks.push(chunk);
+  }
+  try {
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid body');
+    return body;
+  }
+  catch { throw new ApiError(400, 'Invalid JSON'); }
+}
+
+export function createGameApi({ databasePath = ':memory:', clientId = '', clientSecret = '', eventId = 'tag',
+  eventName = 'TAG campaign', botApiKey = '', allowedGuildId = '', allowedRoleIds = [], authenticate, now = Date.now, bot = {} } = {}) {
+  const db = openDatabase(databasePath), sessions = new Map(), limits = new Map();
+  const discordBot = createDiscordBot({ ...bot, db, clientId, eventId, eventName, now,
+    readRanking:(guildId, userId) => leaderboard(db, `guild:${guildId}:event:${eventId}`, userId) });
+  const configured = Boolean(clientId && (clientSecret || authenticate));
+  const verifyDiscord = authenticate ?? createDiscordAuth({ clientId, clientSecret, allowedGuildId, allowedRoleIds });
+  function rate(key, maximum) {
+    const time = now();
+    if (limits.size > 4000) for (const [id, item] of limits) if (item.until < time) limits.delete(id);
+    let bucket = limits.get(key);
+    if (!bucket || bucket.until < time) limits.set(key, bucket = { until:time + 60000, count:0 });
+    if (++bucket.count > maximum) throw new ApiError(429, 'Please wait a moment before trying again');
+  }
+  function getSession(request) {
+    const token = request.headers.authorization?.match(/^Bearer ([\w-]{43})$/)?.[1];
+    const session = sessions.get(token);
+    if (!session || session.expires <= now()) { sessions.delete(token); throw new ApiError(401, 'Reconnect your Discord profile to continue'); }
+    return { ...session, token };
+  }
+  function directorFor(session) {
+    const { board, profile } = session;
+    return createLevelDirector({ storage:{
+      getItem:key => key === PROGRESS_KEY ? db.prepare('SELECT progress FROM profiles WHERE board=? AND user_id=?').get(board, profile.id)?.progress : null,
+      setItem:(key, value) => { if (key === PROGRESS_KEY) db.prepare('UPDATE profiles SET progress=? WHERE board=? AND user_id=?').run(value, board, profile.id); },
+    } });
+  }
+  function send(response, status, data) {
+    response.writeHead(status, { 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff' });
+    response.end(JSON.stringify(data));
+  }
+  async function handle(request, response, next) {
+    const pathname = new URL(request.url, 'http://localhost').pathname;
+    if (pathname === '/healthz' && request.method === 'GET') {
+      send(response, 200, { status:'ok', botConfigured:discordBot.configured }); return;
+    }
+    if (pathname === '/api/discord/interactions') { await discordBot.handle(request, response); return; }
+    if (!pathname.startsWith('/api/')) { next?.(); return; }
+    try {
+      const origin = request.headers.origin;
+      if (origin && origin !== `https://${clientId}.discordsays.com` && origin !== `http://${request.headers.host}` && origin !== `https://${request.headers.host}`)
+        throw new ApiError(403, 'This origin is not allowed');
+      if (pathname === '/api/config' && request.method === 'GET') {
+        send(response, 200, { configured, clientId, eventName }); return;
+      }
+      if (pathname === '/api/bot/leaderboard' && request.method === 'GET' && botApiKey.length >= 32) {
+        const provided = request.headers.authorization?.replace(/^Bearer /, '') ?? '';
+        if (!timingSafeEqual(createHash('sha256').update(provided).digest(), createHash('sha256').update(botApiKey).digest())) throw new ApiError(401, 'Invalid service credential');
+        rate('bot:ranking', 120);
+        const params = new URL(request.url, 'http://localhost').searchParams;
+        const guildId = params.get('guildId'), userId = params.get('userId') || '';
+        if (!/^\d{15,22}$/.test(guildId ?? '') || (userId && !/^\d{15,22}$/.test(userId))) throw new ApiError(400, 'Invalid server or participant');
+        send(response, 200, { ...leaderboard(db, `guild:${guildId}:event:${eventId}`, userId), boardName:eventName }); return;
+      }
+      if (!configured) throw new ApiError(503, 'Discord profiles are not configured on the game server yet');
+      if (pathname === '/api/discord/session' && request.method === 'POST') {
+        rate(`auth:${request.socket.remoteAddress}`, 30);
+        const input = await jsonBody(request);
+        const guildId = input.guildId ?? null;
+        if (guildId !== null && (typeof guildId !== 'string' || !/^\d{15,22}$/.test(guildId))) throw new ApiError(400, 'Invalid Discord server');
+        let verified;
+        try { verified = await verifyDiscord({ code:input.code, guildId }); }
+        catch (error) { throw new ApiError(401, error.message); }
+        const board = guildId ? `guild:${guildId}:event:${eventId}` : `event:${eventId}`;
+        const token = randomBytes(32).toString('base64url');
+        const session = { board, profile:verified.profile, expires:now() + verified.expiresIn * 1000,
+          boardName:guildId ? `This server · ${eventName}` : eventName };
+        for (const [id, value] of sessions) if (value.expires <= now()) sessions.delete(id);
+        if (sessions.size >= 10000) throw new ApiError(503, 'Please try connecting again shortly');
+        sessions.set(token, session);
+        db.prepare(`INSERT INTO profiles(board,user_id,name,avatar) VALUES(?,?,?,?) ON CONFLICT(board,user_id) DO UPDATE SET name=excluded.name,avatar=excluded.avatar`)
+          .run(board, verified.profile.id, verified.profile.name, verified.profile.avatar);
+        send(response, 200, { token, accessToken:verified.accessToken, profile:verified.profile,
+          boardName:session.boardName, expiresAt:session.expires }); return;
+      }
+      const session = getSession(request);
+      rate(`user:${session.profile.id}`, 120);
+      if (pathname === '/api/discord/session' && request.method === 'DELETE') {
+        sessions.delete(session.token); send(response, 200, { disconnected:true }); return;
+      }
+      if (pathname === '/api/leaderboard' && request.method === 'GET') {
+        send(response, 200, { ...leaderboard(db, session.board, session.profile.id), boardName:session.boardName }); return;
+      }
+      if (pathname === '/api/runs' && request.method === 'POST') {
+        const input = await jsonBody(request);
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          const existing = db.prepare("SELECT * FROM attempts WHERE board=? AND user_id=? AND status='ready' ORDER BY started_at DESC LIMIT 1").get(session.board, session.profile.id);
+          if (existing && !input.restart && now() - existing.started_at < 3600000) {
+            db.exec('COMMIT'); send(response, 200, { ticket:existing.id, config:JSON.parse(existing.config) }); return;
+          }
+          if (existing) db.prepare("UPDATE attempts SET status='abandoned' WHERE id=?").run(existing.id);
+          const director = directorFor(session), config = director.current({ upgrade:true }), ticket = randomUUID();
+          if (!director.available) throw new ApiError(503, 'Progress could not be saved. Please try again.');
+          db.prepare('INSERT INTO attempts(id,board,user_id,config,started_at) VALUES(?,?,?,?,?)').run(ticket, session.board, session.profile.id, JSON.stringify(config), now());
+          db.exec('COMMIT'); send(response, 200, { ticket, config }); return;
+        } catch (error) { db.exec('ROLLBACK'); throw error; }
+      }
+      if (pathname === '/api/runs/finish' && request.method === 'POST') {
+        rate(`finish:${session.profile.id}`, 10);
+        const input = await jsonBody(request);
+        if (typeof input.ticket !== 'string' || input.ticket.length > 64) throw new ApiError(400, 'Invalid attempt');
+        const attempt = db.prepare('SELECT * FROM attempts WHERE id=? AND board=? AND user_id=?').get(input.ticket, session.board, session.profile.id);
+        if (!attempt) throw new ApiError(404, 'Attempt not found');
+        if (attempt.result) { send(response, 200, JSON.parse(attempt.result)); return; }
+        if (attempt.status !== 'ready') throw new ApiError(409, 'This attempt has been restarted');
+        if (now() - attempt.started_at > 3600000) throw new ApiError(409, 'This attempt has expired. Restart the level to continue.');
+        const config = JSON.parse(attempt.config);
+        let result;
+        try { result = replayRun(config, input.trace); }
+        catch { throw new ApiError(422, 'This run could not be verified. Restart the level to try again.'); }
+        if (result.simulationSeconds > (now() - attempt.started_at) / 1000 + 3) throw new ApiError(422, 'This run finished faster than its verified duration');
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          const director = directorFor(session);
+          if (!director.complete(config, result)) throw new ApiError(409, 'The level has already changed');
+          if (!director.available) throw new ApiError(503, 'Progress could not be saved. Please try again.');
+          if (result.status === 'won') db.prepare('INSERT INTO scores(attempt_id,board,user_id,level,tier,score,elapsed,layout,created_at) VALUES(?,?,?,?,?,?,?,?,?)')
+            .run(attempt.id, session.board, session.profile.id, config.level, config.tier, result.score, result.elapsed, result.layoutName, now());
+          const ranking = leaderboard(db, session.board, session.profile.id);
+          const answer = { status:result.status, score:result.score, elapsed:result.elapsed, bonuses:result.bonuses, hits:result.hits, level:config.level, rank:ranking.you?.rank ?? null,
+            message:result.status === 'won' ? `Verified · #${ranking.you.rank} on ${session.boardName}` : 'Your level is kept. The challenge stays active, with up to 10 extra seconds on retry.' };
+          db.prepare('UPDATE attempts SET status=?,result=? WHERE id=?').run(result.status, JSON.stringify(answer), attempt.id);
+          db.exec('COMMIT'); send(response, 200, answer); return;
+        } catch (error) { db.exec('ROLLBACK'); throw error; }
+      }
+      throw new ApiError(404, 'Endpoint not found');
+    } catch (error) {
+      send(response, error.status ?? 500, { error:error.status ? error.message : 'The game server is unavailable. Please try again.' });
+    }
+  }
+  return { handle, close() {
+    sessions.clear();
+    if (discordBot.pendingCount) return discordBot.whenIdle().finally(() => db.close());
+    db.close();
+  }, configured, botConfigured:discordBot.configured, whenBotIdle:discordBot.whenIdle };
+}

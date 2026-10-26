@@ -3,3 +3,9 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+game/node_modules/
+game/dist/
+game/.env*
+!game/.env.server.example
+game/.data/
+game/*.log

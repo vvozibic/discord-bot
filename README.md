@@ -44,42 +44,42 @@ npm run dev
 
 ## Forest Trail mini-game
 
-`/play` replies privately with a **Play Forest Trail** button. The command is
-part of this existing bot and reuses the Forest Trail Discord Activity already
-created for the game. It needs no new bot token and no additional privileged
-intents. Existing verification, reports, welcomes and support commands keep
-their current configuration.
+The complete Discord Activity and score API live in [`game/`](game/README.md).
+Deploy that directory as an Activity service in the existing Railway project,
+from the same repository as this bot. The game and its persistent score database
+run on Railway; no laptop process or temporary tunnel is required.
 
-The initial release is restricted at both command registration and runtime to
-administrators in Mindo AI's `#admin-only` channel. The defaults are:
+`/play` and the persistent **Play Forest Trail** panel button launch this bot's
+own Activity inside Discord. The beta is restricted to the exact `beta-tester`
+role in `#beta-testing`; administrators may also use `#admin-only`.
+Administrators publish the panel with `/game-panel` in either allowed channel.
+The bot registers the persistent view after reconnect and does not repost panels.
 
 ```dotenv
 FOREST_TRAIL_ENABLED=true
-FOREST_TRAIL_ACTIVITY_ID=1556624227212460092
+# Optional extra identity check: this SAME bot application's ID.
+FOREST_TRAIL_ACTIVITY_ID=
 FOREST_TRAIL_GUILD_ID=1400787114333044887
 FOREST_TRAIL_TEST_CHANNEL_ID=1421187164187791381
+FOREST_TRAIL_BETA_CHANNEL_ID=1564277364089823285
+FOREST_TRAIL_BETA_ROLE_ID=1564276225520963726
 ```
 
-An unverified Activity also requires Discord developer/team or app-tester access.
-Server administrator permissions alone do not grant access to a private Activity.
+The launcher uses the existing bot token and Gateway command sync. It does not
+open a website or launch another bot application's Activity. Existing bot
+features keep their current configuration. `FOREST_TRAIL_ENABLED=false` disables
+the game launcher and panel publishing without affecting other commands.
 
-The game and its database can continue running on the laptop. Keep its local
-server and HTTPS tunnel running, and point the **game Activity's** root URL
-mapping at the current tunnel hostname. The command uses the Activity's stable
-Discord URL, so a tunnel change does not require changing the bot's command.
+Scores are validated by the server and stored under Discord user IDs, with the
+latest server nickname for display. Scores and progress survive nickname changes,
+restarts and redeployments when the required Railway volume is attached.
 
-Deploy this code through the bot's existing startup process. Its existing
-`on_ready` command sync registers `/play`; no separate interaction endpoint or
-new login is needed for this bot. `FOREST_TRAIL_ENABLED=false` disables the
-launcher without affecting other commands. The runtime channel and administrator
-checks also apply when a server administrator customizes command permissions.
+Activity hosting does not remove Discord's verification requirements. An
+unverified Activity is restricted to developers/app testers and small servers;
+Message Content Intent approval alone does not release an Activity to everyone.
+See [`game/README.md`](game/README.md) for deployment and Discord configuration.
 
-Discord's native launch callback opens only the responding application's own
-Activity. When this bot and the configured Activity have different application
-IDs, the button opens the existing Activity instead. When they match, `/play`
-uses Discord's native launch callback directly.
-
-Validation: `python -m unittest discover -s . -p 'test_*.py'`.
+Validation: `python -m unittest discover -s . -p 'test_*.py'` and the game tests.
 
 ## Automatic member welcomes
 
