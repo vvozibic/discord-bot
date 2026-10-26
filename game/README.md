@@ -46,6 +46,18 @@ After the Python bot is updated and restarted, an administrator can run
 `/play` both enforce the exact guild, channel and role IDs. No message is posted
 automatically on reconnect.
 
+The bot checks its cached application flags before attempting a launch. If it
+reports that Forest Trail is not enabled, check the application ID in its log,
+configure that application's URL Mapping and enable Activities. Restart the bot
+after changing those settings so its cached flags are refreshed.
+
+Launch failures log the application/interaction IDs, HTTP status, Discord error
+code and interaction age without tokens or raw response bodies. An expired or
+already acknowledged interaction is not retried. The Activity launch must be
+the initial response within Discord's three-second window; do not defer `/play`
+before calling `launch_activity()`. An expired error reply cannot replace the
+original launch error in the logs.
+
 ## Scores and identity
 
 The game connects through Discord's Embedded App SDK and OAuth scopes `identify`
