@@ -2,9 +2,9 @@ name: Forest Trail validation
 
 on:
   push:
-    paths: ['game/**', 'game_launcher.py', 'test_game_launcher.py', '.github/workflows/forest-trail.yml']
+    paths: ['game/**', 'bot.py', 'discord_runtime.py', 'test_discord_runtime.py', 'game_launcher.py', 'test_game_launcher.py', '.github/workflows/forest-trail.yml']
   pull_request:
-    paths: ['game/**', 'game_launcher.py', 'test_game_launcher.py', '.github/workflows/forest-trail.yml']
+    paths: ['game/**', 'bot.py', 'discord_runtime.py', 'test_discord_runtime.py', 'game_launcher.py', 'test_game_launcher.py', '.github/workflows/forest-trail.yml']
 
 permissions:
   contents: read
@@ -47,4 +47,4 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install 'discord.py>=2.6'
-      - run: python -m unittest test_game_launcher
+      - run: python -m unittest test_game_launcher test_discord_runtime

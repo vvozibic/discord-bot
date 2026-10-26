@@ -19,6 +19,7 @@ import channel_contributor_report
 import message_audit
 from member_welcome import MemberWelcomeRelay
 from game_launcher import ForestTrailView, register_game_command
+from discord_runtime import build_bot_intents, require_message_content
 import database
 import x_comment_raffle
 from datetime import datetime, timezone, timedelta
@@ -967,9 +968,7 @@ def resolve_profile_card_tier(result: VerificationResult) -> str | None:
 # ============================================================
 # Discord bot (Slash commands + V2 replies)
 # ============================================================
-intents = discord.Intents.default()
-intents.guilds = True
-intents.message_content = True
+intents = build_bot_intents()
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
@@ -1652,6 +1651,9 @@ class BelieverCampaignView(discord.ui.View):
             )
             return
 
+        if not await require_message_content(interaction, client.intents):
+            return
+
         if not BELIEVER_PROOF_CHANNEL_ID:
             await interaction.response.send_message(
                 "Proof channel ID is not configured.",
@@ -2225,6 +2227,9 @@ async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
     if not await require_export_command_role(interaction):
         return
 
+    if not await require_message_content(interaction, client.intents):
+        return
+
     if not BELIEVER_PROOF_CHANNEL_ID:
         await interaction.response.send_message(
             "Proof channel ID is not configured.",
@@ -2284,6 +2289,9 @@ async def export_108_hours_no_duplicates_cmd(interaction: discord.Interaction):
 @discord.app_commands.guild_only()
 async def export_150_hours_no_duplicates_links_cmd(interaction: discord.Interaction):
     if not await require_export_command_role(interaction):
+        return
+
+    if not await require_message_content(interaction, client.intents):
         return
 
     if not BELIEVER_PROOF_CHANNEL_ID:
@@ -2425,6 +2433,9 @@ async def _run_message_audit_command(
 ):
     """Run a bounded audit with optional image-attachment filtering."""
     if not await require_export_command_role(interaction):
+        return
+
+    if not await require_message_content(interaction, client.intents):
         return
 
     if not 1 <= winner_count <= 25:
@@ -3335,17 +3346,25 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 @client.event
 async def on_message(message: discord.Message):
     await member_welcome_relay.handle_message(message)
-    await maybe_delete_duplicate_believer_x_proof(message)
+    if client.intents.message_content:
+        await maybe_delete_duplicate_believer_x_proof(message)
 
 @client.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
-    await maybe_delete_duplicate_believer_x_proof(after)
+    if client.intents.message_content:
+        await maybe_delete_duplicate_believer_x_proof(after)
 
 @client.event
 async def on_ready():
     global PERSISTENT_VIEWS_REGISTERED
 
     print(f"Logged in as {client.user} (ID: {client.user.id})")
+    if not client.intents.message_content:
+        print(
+            "Message Content Intent is disabled: slash commands, Forest Trail and "
+            "system welcomes remain available; proof checks, duplicate-proof "
+            "moderation and content/image audits or link exports are unavailable."
+        )
     await database.init_db()
     print("Database initialized.")
 

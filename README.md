@@ -13,7 +13,7 @@ A Discord bot that listens in `#verify`, validates a submission with an image + 
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in your Discord token.
-2. Ensure the bot has **Message Content Intent** enabled in the Discord developer portal.
+2. The Python bot starts without privileged intents by default. For message-content features, follow the optional access setup below.
 3. Create Discord roles that match the stub worker output (defaults to `Project A`, `Project B`, `Project C`, `Project D`) or adjust the worker output in `bot/src/queue.ts`.
 4. Start the services:
 
@@ -80,6 +80,28 @@ Message Content Intent approval alone does not release an Activity to everyone.
 See [`game/README.md`](game/README.md) for deployment and Discord configuration.
 
 Validation: `python -m unittest discover -s . -p 'test_*.py'` and the game tests.
+
+## Optional Message Content Intent
+
+The Python bot defaults to `DISCORD_MESSAGE_CONTENT_INTENT=false`, so missing
+Discord approval does not prevent it from logging in. Slash commands, Forest
+Trail's `/play` and `/game-panel`, FAQ buttons, `/verify` screenshot uploads and
+native system-message welcomes do not require message-content access.
+
+Ascended campaign participation checks, automatic duplicate-proof deletion,
+`/108-hours-no-duplicates`, `/150h-no-duplicates-links`, `/audit-messages` and
+`/audit-image-senders` need Message Content Intent. With access disabled, passive
+duplicate checks are skipped and those commands/buttons explain that the feature
+is unavailable before reading history or changing campaign eligibility. They do
+not emit incomplete content reports. Author-only campaign exports, role exports
+and contributor exports remain available.
+
+To restore message-content features, enable **Message Content Intent** under
+**Bot → Privileged Gateway Intents** for the application whose token the bot uses,
+obtain Discord approval if required, set `DISCORD_MESSAGE_CONTENT_INTENT=true` in
+Railway, and restart the bot. Setting the variable alone does not grant access;
+Discord will reject the connection if the intent is not enabled or approved.
+No Members or Presence privileged intent is requested by this change.
 
 ## Automatic member welcomes
 
