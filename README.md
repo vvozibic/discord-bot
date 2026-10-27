@@ -45,9 +45,25 @@ npm run dev
 ## Forest Trail mini-game
 
 The complete Discord Activity and score API live in [`game/`](game/README.md).
-Deploy that directory as an Activity service in the existing Railway project,
-from the same repository as this bot. The game and its persistent score database
-run on Railway; no laptop process or temporary tunnel is required.
+The repository's root Dockerfile builds both runtimes. The existing Railway
+service keeps `python start.py`: it now supervises the bot, public OAuth/game
+gateway and private Node.js game process in the same container. The existing
+public domain serves the game and its API as well as the unchanged `/x/*` and
+`/api/x/*` routes. No second Railway service or laptop tunnel is required.
+
+Set `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` for the running bot's own
+application in that service's Railway Variables, and apply the staged changes.
+Attach a persistent volume to the same service, normally at `/data`; the game
+database defaults to `<RAILWAY_VOLUME_MOUNT_PATH>/forest-trail.sqlite`.
+Existing bot database variables and files are not moved. Use one replica with
+the SQLite volume. `GAME_ADMIN_ROLE_IDS` can additionally allow exact admin
+role IDs; otherwise players need `beta-tester`, including server owners.
+
+`/healthz` is liveness and reports game configuration separately. `/readyz`
+returns 200 only when the game is configured and its database can be opened;
+it does not perform a user's Discord login. Missing game credentials/storage
+are listed by variable name without secret values. The existing bot stays
+available, while game authentication/runs fail closed until setup is complete.
 
 `/play` and the persistent **Play Forest Trail** panel button launch this bot's
 own Activity inside Discord. The beta is restricted to the exact `beta-tester`
@@ -79,7 +95,10 @@ unverified Activity is restricted to developers/app testers and small servers;
 Message Content Intent approval alone does not release an Activity to everyone.
 See [`game/README.md`](game/README.md) for deployment and Discord configuration.
 
-Validation: `python -m unittest discover -s . -p 'test_*.py'` and the game tests.
+Validation: build `game/` before running `python -m unittest discover -s . -p
+'test_*.py'`; the web integration tests additionally require `httpx`. The
+workflow tests both the standalone game and the root combined image, including
+legacy routes, volume persistence, child-process failure and missing settings.
 
 ## Optional Message Content Intent
 
