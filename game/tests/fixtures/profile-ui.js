@@ -21,6 +21,7 @@ const ui = createReplayUI({ social, audio, director:createLevelDirector({ storag
     const canvas = document.querySelector('#world'), context = canvas.getContext('2d');
     context.fillStyle = '#304e3e'; context.fillRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = '#e9f6df'; context.font = '14px sans-serif'; context.fillText('UI test fixture · not a live Discord session', 16, 40);
+    document.querySelector('#startup-status').hidden = true;
   },
 });
 social.setSdk({ guildId:'333333333333333333', commands:{ authorize:async () => ({ code:'alice' }), authenticate:async () => ({ user:{ id:'123456789012345678' } }) } }, '1556624227212460092');

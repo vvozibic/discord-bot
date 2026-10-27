@@ -31,6 +31,12 @@ const profiler = createFrameProfiler(canvas);
 ctx.imageSmoothingEnabled = false;
 const connection = document.querySelector('#connection');
 const toast = document.querySelector('#toast');
+const startupPanel = document.querySelector('#startup-status');
+const startupTitle = document.querySelector('#startup-title');
+const startupMessage = document.querySelector('#startup-message');
+const startupConnect = document.querySelector('#startup-connect');
+const startupReload = document.querySelector('#startup-reload');
+let startupProblem = '', startupReloadOnly = false;
 const talkButton = document.querySelector('#interact');
 const elderDialog = document.querySelector('#elder-dialog');
 const elderCopy = document.querySelector('#elder-copy');
@@ -230,6 +236,38 @@ function tell(message, duration = 3500) {
   noticeRenderer = typeof message === 'function' ? message : null;
   toast.textContent = noticeRenderer ? noticeRenderer() : message;
   noticeUntil = performance.now() + duration;
+  if (!player) {
+    startupProblem = toast.textContent;
+    if (!startupReloadOnly) canvas.dataset.phase = social.connected ? 'start-error' : 'connect-required';
+    refreshStartupStatus();
+  }
+}
+
+function refreshStartupStatus() {
+  if (player) return;
+  const busy = social.busy;
+  const ready = social.ready && Boolean(coinArt);
+  if (busy) startupProblem = '';
+  startupPanel.setAttribute('aria-busy', String(busy || (!startupProblem && (!ready || social.connected))));
+  startupConnect.hidden = !ready || busy || startupReloadOnly || (!startupProblem && social.connected);
+  startupConnect.disabled = !ready || busy || startupReloadOnly;
+  startupConnect.textContent = social.connected ? 'Try again' : 'Connect profile';
+  startupReload.hidden = !startupProblem;
+  if (startupProblem) {
+    startupTitle.textContent = startupReloadOnly || !social.ready ? 'Unable to open Forest Trail' : social.connected ? 'Your trail could not start' : 'Connect your Discord profile';
+    startupMessage.textContent = startupProblem;
+  } else if (busy) {
+    canvas.dataset.phase = 'profile-connecting';
+    startupTitle.textContent = 'Connecting your profile';
+    startupMessage.textContent = 'Finish the Discord authorization window to open your trail. Your progress will be saved to your profile.';
+  } else if (social.connected) {
+    canvas.dataset.phase = 'starting';
+    startupTitle.textContent = 'Opening your trail';
+    startupMessage.textContent = 'Loading your verified level from the server.';
+  } else if (ready) {
+    startupTitle.textContent = 'Connect your Discord profile';
+    startupMessage.textContent = 'Connect your profile to play Forest Trail and save your progress on the server.';
+  }
 }
 function clearInput() {
   keys.clear(); touchDirections.clear(); pendingDirections.clear(); buttonDirections.clear();
@@ -802,11 +840,20 @@ function frame(now) {
   }
   impactFrame = damageFeedback.sample(reducedMotion);
   const drawStart = performance.now(); draw(now / 1000);
+  if (!startupPanel.hidden) startupPanel.hidden = true;
   profiler.record(now, drawStart - updateStart, performance.now() - drawStart, true);
   frameRequest = requestAnimationFrame(frame);
 }
 
 canvas.dataset.phase = 'loading';
+startupConnect.addEventListener('click', () => {
+  if (!coinArt || !social.ready || social.busy || startupReloadOnly || player) return;
+  startupProblem = '';
+  refreshStartupStatus();
+  document.querySelector('#connect-profile').click();
+});
+startupReload.addEventListener('click', () => location.reload());
+social.subscribe(refreshStartupStatus);
 if (window.parent === window) {
   document.body.classList.add('discord-required');
   document.querySelector('#discord-launch-required').hidden = false;
@@ -818,11 +865,14 @@ if (window.parent === window) {
   resizeView();
   const viewportObserver = new ResizeObserver(resizeView); viewportObserver.observe(canvas);
   lastFrame = performance.now();
-  if (!connected) { tell('Reopen Forest Trail from Discord to connect.', Infinity); return; }
+  if (!connected) {
+    canvas.dataset.phase = 'connection-error'; startupReloadOnly = true;
+    tell('Discord could not connect. Reload the Activity or reopen Forest Trail from Discord to try again.', Infinity); return;
+  }
   try { await social.connect(); await ui.startCurrent(false); }
   catch (error) { canvas.dataset.phase = 'connect-required'; tell(error.message, Infinity); }
 }).catch(error => {
-  canvas.dataset.phase = 'asset-error';
+  canvas.dataset.phase = 'asset-error'; startupReloadOnly = true;
   tell('The coin artwork could not load. Please reload the Activity.', Infinity);
   console.error('Coin artwork:', error);
 });

@@ -46,6 +46,17 @@
       </section>
       <section class="world-frame" aria-label="Game area">
         <canvas id="world" width="480" height="288" tabindex="0" aria-label="Game location. Move with WASD, arrow keys, joystick, or by tapping the ground.">Your browser needs Canvas support to play this game.</canvas>
+        <section id="startup-status" class="startup-status" aria-labelledby="startup-title" aria-busy="true">
+          <div class="startup-card">
+            <img class="startup-logo" src="/assets/pulse-logo.png" width="48" height="48" alt="" />
+            <h2 id="startup-title">Preparing your trail</h2>
+            <p id="startup-message" role="status" aria-live="polite">Connecting to Discord and loading the game. Your trail will open after your profile is connected.</p>
+            <div class="startup-actions">
+              <button id="startup-connect" type="button" hidden disabled>Connect profile</button>
+              <button id="startup-reload" class="startup-reload" type="button" hidden>Reload Activity</button>
+            </div>
+          </div>
+        </section>
         <div class="location-label"><i></i> QUIET GROVE</div>
         <button id="character-button" class="character-button" type="button" aria-haspopup="dialog" aria-controls="character-dialog" aria-label="Choose character" title="Choose character"><canvas id="character-portrait" width="32" height="40" aria-hidden="true"></canvas><span>Character</span></button>
         <div id="toast" class="toast" role="status" aria-live="polite">Collect the pulse coins. Tap the ground to walk.</div>

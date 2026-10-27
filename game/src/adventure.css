@@ -87,6 +87,15 @@ button:disabled { opacity: .5; cursor: default; }
 #run-heat { color: #efc392; }
 #run-heat.urgent { color: #ffad83; font-weight: 700; }
 .world-frame { position: relative; min-height: 0; background: #45644a; border-radius: 12px; overflow: hidden; border: 3px solid #75805c; box-shadow: inset 0 0 20px #0003; }
+.startup-status { position: absolute; z-index: 5; inset: 0; display: grid; padding: clamp(16px, 4vw, 36px); overflow: auto; background: radial-gradient(ellipse at 50% 25%, #355a46, #152c23 80%); }
+.startup-card { width: min(420px, 100%); margin: auto; text-align: center; }
+.startup-logo { display: block; margin: 0 auto 14px; border-radius: 12px; }
+.startup-card h2 { margin: 0; font-size: clamp(20px, 4vw, 28px); line-height: 1.2; color: #f1ecd2; }
+.startup-card p { margin: 12px 0 18px; font-size: 14px; line-height: 1.5; color: #d0e0cb; overflow-wrap: anywhere; }
+.startup-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.startup-actions button { min-height: 44px; padding: 10px 18px; border: 1px solid #e8d89d; border-radius: 9px; background: #e8d89d; color: #233b2d; font-size: 14px; font-weight: 700; touch-action: manipulation; }
+.startup-actions .startup-reload { border-color: #829b78; background: #294433; color: #e0eacb; }
+@media (max-height: 420px) { .startup-status { padding: 12px; } .startup-logo { width: 32px; height: 32px; margin-bottom: 8px; } .startup-card p { margin: 8px 0 12px; font-size: 12px; } }
 canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; touch-action: none; cursor: crosshair; }
 .location-label { position: absolute; left: 12px; top: 12px; font-size: 10px; letter-spacing: 1.5px; font-weight: 700; padding: 8px 10px; background: #172e25d9; border: 1px solid #7b987b70; border-radius: 6px; pointer-events: none; display: flex; align-items: center; gap: 7px; }
 .location-label i { width: 5px; height: 5px; background: #e8d596; border-radius: 50%; }
