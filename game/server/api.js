@@ -162,6 +162,10 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
       }
       throw new ApiError(404, 'Endpoint not found');
     } catch (error) {
+      if (!error.status) {
+        const code = /^[A-Z0-9_]{1,40}$/.test(error?.code ?? '') ? error.code : 'unavailable';
+        console.warn(`Forest Trail API request failed: backend=${store.backend} path=${pathname} code=${code}`);
+      }
       send(response, error.status ?? 500, { error:error.status ? error.message : 'The game server is unavailable. Please try again.' });
     }
   }

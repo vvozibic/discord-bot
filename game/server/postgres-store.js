@@ -73,9 +73,9 @@ export async function openPostgresGameStore(databaseUrl, { PoolClass = Pool } = 
           attempt:async id => (await q('SELECT * FROM forest_attempts WHERE id=$1 AND board=$2 AND user_id=$3', [id, board, userId])).rows[0],
           abandon:id => q("UPDATE forest_attempts SET status='abandoned' WHERE id=$1 AND board=$2 AND user_id=$3", [id, board, userId]),
           saveProgress:value => q('UPDATE forest_profiles SET progress=$1 WHERE board=$2 AND user_id=$3', [value, board, userId]),
-          createAttempt:(id, config, startedAt) => q('INSERT INTO forest_attempts(id,board,user_id,config,started_at) VALUES($1,$2,$3,$4,$5)', [id, board, userId, JSON.stringify(config), startedAt]),
+          createAttempt:(id, config, startedAt) => q('INSERT INTO forest_attempts(id,board,user_id,config,started_at) VALUES($1,$2,$3,$4,$5)', [id, board, userId, JSON.stringify(config), Math.trunc(startedAt)]),
           addScore:(attempt, config, result, createdAt) => q('INSERT INTO forest_scores(attempt_id,board,user_id,level,tier,score,elapsed,layout,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-            [attempt.id, board, userId, config.level, config.tier, result.score, result.elapsed, result.layoutName, createdAt]),
+            [attempt.id, board, userId, config.level, config.tier, result.score, result.elapsed, result.layoutName, Math.trunc(createdAt)]),
           finish:(id, status, result) => q('UPDATE forest_attempts SET status=$1,result=$2 WHERE id=$3 AND board=$4 AND user_id=$5', [status, JSON.stringify(result), id, board, userId]),
           ranking:() => ranking(q, board, userId),
         };

@@ -6,13 +6,14 @@ import { Pool } from 'pg';
 import { openPostgresGameStore } from '../server/postgres-store.js';
 import { createGameApi } from '../server/api.js';
 import { recordedVictory } from './fixtures/ranked-run.js';
+import { withSeededProfiles } from './fixtures/seeded-store.js';
 
 const databaseUrl = process.env.GAME_TEST_DATABASE_URL;
 const USERS = { alice:'123456789012345678', bob:'223456789012345678' };
 const GUILD = '333333333333333333';
 
 async function fixture(eventId, clock, names = { alice:'Alice', bob:'Bob' }) {
-  const gameStore = await openPostgresGameStore(databaseUrl);
+  const gameStore = withSeededProfiles(await openPostgresGameStore(databaseUrl), 'postgres-api-fixed');
   const api = createGameApi({ gameStore, eventId, clientId:'1466831420575186985', now:() => clock.time,
     authenticate:async ({ code, guildId }) => {
       if (!USERS[code] || guildId !== GUILD) throw new Error('Not a member');

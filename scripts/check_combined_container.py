@@ -120,7 +120,8 @@ def main():
                "--env", "POSTGRES_PASSWORD=ci-only-shared-password", "--env", "POSTGRES_DB=forest_shared_ci", "postgres:17-bookworm")
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            probe = subprocess.run(["docker", "exec", postgres_name, "pg_isready", "-U", "postgres", "-d", "forest_shared_ci"],
+            probe = subprocess.run(["docker", "exec", "--env", "PGPASSWORD=ci-only-shared-password", postgres_name,
+                                    "psql", "-h", "127.0.0.1", "-U", "postgres", "-d", "forest_shared_ci", "--no-password", "-tAc", "SELECT 1"],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=10)
             if probe.returncode == 0:
                 break
