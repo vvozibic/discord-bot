@@ -6,6 +6,7 @@ import { resolve, sep, extname } from 'node:path';
 import { createGameApi } from './api.js';
 import { loadLocalEnvironment } from './bot/config.js';
 import { productionOptionsFromEnv } from './production-config.js';
+import { openPostgresGameStore } from './postgres-store.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.png':'image/png', '.svg':'image/svg+xml', '.webp':'image/webp', '.ico':'image/x-icon' };
@@ -37,6 +38,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const { host, port, ...options } = productionOptionsFromEnv();
   // The Python bot retains its Gateway connection and handles /play. This
   // service only hosts the Activity, OAuth exchange and durable game data.
+  if (options.databaseUrl) options.gameStore = await openPostgresGameStore(options.databaseUrl);
   const server = createProductionServer(options);
   server.listen(port, host, () => { console.log(`Forest Trail listening on ${host}:${port}`); });
   for (const signal of ['SIGINT','SIGTERM']) process.on(signal, () => server.close());

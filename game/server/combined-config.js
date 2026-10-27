@@ -1,5 +1,5 @@
-import { isAbsolute, join, resolve, sep } from 'node:path';
 import { productionOptionsFromEnv } from './production-config.js';
+import { databaseOptionsFromEnv } from './database-config.js';
 
 const SNOWFLAKE = /^\d{15,22}$/;
 
@@ -19,11 +19,8 @@ export function combinedOptionsFromEnv(env = process.env) {
   for (const name of ['DISCORD_CLIENT_ID', 'GAME_ALLOWED_GUILD_ID', 'GAME_BETA_ROLE_ID'])
     if (!SNOWFLAKE.test(normalized[name]) || BigInt(normalized[name]) <= 0n) missing.push(name);
   if (!env.DISCORD_CLIENT_SECRET?.trim()) missing.push('DISCORD_CLIENT_SECRET');
-  const mount = env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
-  const filename = env.GAME_DATABASE_PATH?.trim() || (mount ? join(mount, 'forest-trail.sqlite') : '');
-  if (env.RAILWAY_ENVIRONMENT_ID && (!mount || !isAbsolute(mount))) missing.push('RAILWAY_VOLUME_MOUNT_PATH');
-  if (!filename || !isAbsolute(filename) || (mount && !resolve(filename).startsWith(resolve(mount) + sep)))
-    missing.push('GAME_DATABASE_PATH');
+  const database = databaseOptionsFromEnv(normalized);
+  missing.push(...database.missing);
   if ((env.GAME_ADMIN_ROLE_IDS || '').split(',').some(value => value.trim() && (!SNOWFLAKE.test(value.trim()) || BigInt(value.trim()) <= 0n)))
     missing.push('GAME_ADMIN_ROLE_IDS');
   const ready = missing.length === 0;
@@ -32,5 +29,5 @@ export function combinedOptionsFromEnv(env = process.env) {
     clientSecret:'', eventId:env.GAME_EVENT_ID || 'mindo-beta', eventName:env.GAME_EVENT_NAME || 'Mindo AI beta',
     host:'127.0.0.1', port:internalPort,
   };
-  return { ready, missing, options };
+  return { ready, missing, backend:database.backend, options };
 }

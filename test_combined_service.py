@@ -44,7 +44,7 @@ class CombinedServiceTests(unittest.TestCase):
                "DISCORD_CLIENT_SECRET": "fixture-only-never-exposed", "RAILWAY_ENVIRONMENT_ID": "test",
                "GAME_INTERNAL_PORT": str(port), "GAME_ADMIN_ROLE_IDS": "",
                "GAME_ALLOWED_GUILD_ID": "1400787114333044887", "GAME_BETA_ROLE_ID": "1564276225520963726"}
-        for name in ("GAME_DATABASE_PATH", "RAILWAY_VOLUME_MOUNT_PATH", "GAME_BOT_API_KEY"):
+        for name in ("GAME_DATABASE_PATH", "RAILWAY_VOLUME_MOUNT_PATH", "GAME_BOT_API_KEY", "DATABASE_URL", "GAME_DATABASE_URL"):
             env.pop(name, None)
         if storage:
             env["RAILWAY_VOLUME_MOUNT_PATH"] = str(self.mount)

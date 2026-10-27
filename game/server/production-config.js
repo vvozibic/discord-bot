@@ -1,4 +1,4 @@
-import { isAbsolute, join, resolve, sep } from 'node:path';
+import { databaseOptionsFromEnv } from './database-config.js';
 
 const SNOWFLAKE = /^\d{15,22}$/;
 
@@ -15,18 +15,13 @@ export function productionOptionsFromEnv(env = process.env) {
   if (adminRoles.some(value => !SNOWFLAKE.test(value) || BigInt(value) <= 0n)) throw new Error('Set valid GAME_ADMIN_ROLE_IDS.');
   const clientSecret = env.DISCORD_CLIENT_SECRET?.trim();
   if (!clientSecret) throw new Error('Set DISCORD_CLIENT_SECRET for the working bot application.');
-  const mount = env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
-  if (env.RAILWAY_ENVIRONMENT_ID && (!mount || !isAbsolute(mount)))
-    throw new Error('Attach a persistent Railway volume before starting the game.');
-  const filename = env.GAME_DATABASE_PATH?.trim() || (mount ? join(mount, 'forest-trail.sqlite') : '');
-  if (!filename || !isAbsolute(filename)) throw new Error('GAME_DATABASE_PATH must be an absolute path on persistent storage.');
-  const databasePath = resolve(filename);
-  if (mount && !databasePath.startsWith(resolve(mount) + sep))
-    throw new Error('GAME_DATABASE_PATH must be inside the attached Railway volume.');
+  const database = databaseOptionsFromEnv(env);
+  if (database.missing.length) throw new Error(`Set valid ${database.missing.join(', ')}.`);
   const port = Number(env.PORT || 5179);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Set a valid PORT.');
   return {
-    databasePath, clientId, clientSecret, allowedGuildId, allowedRoleIds:[betaRoleId, ...adminRoles],
+    ...(database.backend === 'postgres' ? { databaseUrl:database.databaseUrl } : { databasePath:database.databasePath }),
+    clientId, clientSecret, allowedGuildId, allowedRoleIds:[betaRoleId, ...adminRoles],
     eventId:env.GAME_EVENT_ID || 'mindo-beta', eventName:env.GAME_EVENT_NAME || 'Mindo AI beta',
     host:env.GAME_BIND_HOST || '0.0.0.0', port,
   };

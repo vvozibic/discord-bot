@@ -9,6 +9,7 @@ COPY game/src ./game/src
 COPY game/server ./game/server
 COPY game/public ./game/public
 RUN npm --prefix game run build
+RUN npm prune --omit=dev --prefix game
 
 FROM python:3.11-slim-bookworm
 ENV PYTHONUNBUFFERED=1 \
@@ -24,6 +25,7 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 COPY . .
 COPY --from=assets /build/node_modules ./node_modules
 COPY --from=assets /build/game/dist ./game/dist
+COPY --from=assets /build/game/node_modules ./game/node_modules
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/healthz',timeout=4)"
 CMD ["python", "start.py"]

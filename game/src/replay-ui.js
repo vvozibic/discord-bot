@@ -187,7 +187,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     sharedConnect.hidden = social.connected; sharedRefresh.hidden = !social.connected;
     status.hidden = false;
     if (!social.connected) {
-      status.textContent = !social.configured ? 'Shared rankings will be available when Discord profile connections are enabled. You can keep playing locally.'
+      status.textContent = !social.configured ? 'Shared rankings require a configured game server. Please contact an administrator.'
         : !social.insideDiscord ? 'Launch the game inside Discord to show your name and compete.'
         : 'Your name, avatar and verified results will be visible to other participants.';
       return;

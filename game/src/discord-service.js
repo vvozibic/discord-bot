@@ -33,7 +33,7 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
     async connect() {
       if (busy) return;
       if (!sdk) throw new Error('Open Forest Trail inside Discord to connect your profile.');
-      if (!config?.configured) throw new Error('Discord profile connections are not available yet. You can keep playing locally.');
+      if (!config?.configured) throw new Error('Discord profile connections are not available: server setup is incomplete. Please contact an administrator.');
       busy = true; emit();
       let authorized;
       try {

@@ -12,6 +12,19 @@ permissions:
 jobs:
   activity:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_PASSWORD: ci-only-postgres-password
+          POSTGRES_DB: forest_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d forest_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,6 +40,8 @@ jobs:
         working-directory: game
       - run: npm test
         working-directory: game
+        env:
+          GAME_TEST_DATABASE_URL: postgresql://postgres:ci-only-postgres-password@127.0.0.1:5432/forest_test
       - run: docker build --tag forest-trail-ci game
       - name: Check production container and persistent volume configuration
         run: |
