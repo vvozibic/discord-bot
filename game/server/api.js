@@ -24,7 +24,7 @@ async function jsonBody(request) {
 }
 
 export function createGameApi({ databasePath = ':memory:', clientId = '', clientSecret = '', eventId = 'tag',
-  eventName = 'TAG campaign', botApiKey = '', allowedGuildId = '', allowedRoleIds = [], authenticate, now = Date.now, bot = {} } = {}) {
+  eventName = 'TAG campaign', botApiKey = '', allowedGuildId = '', allowedRoleIds = [], authenticate, now = Date.now, bot = {}, healthStatus = {} } = {}) {
   const db = openDatabase(databasePath), sessions = new Map(), limits = new Map();
   const discordBot = createDiscordBot({ ...bot, db, clientId, eventId, eventName, now,
     readRanking:(guildId, userId) => leaderboard(db, `guild:${guildId}:event:${eventId}`, userId) });
@@ -57,7 +57,7 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
   async function handle(request, response, next) {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     if (pathname === '/healthz' && request.method === 'GET') {
-      send(response, 200, { status:'ok', botConfigured:discordBot.configured }); return;
+      send(response, 200, { status:'ok', botConfigured:discordBot.configured, ...healthStatus }); return;
     }
     if (pathname === '/api/discord/interactions') { await discordBot.handle(request, response); return; }
     if (!pathname.startsWith('/api/')) { next?.(); return; }
