@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="How the Mindo_AI_Verifier Discord application and Forest Trail process Discord, X, verification, game and community-report information." />
+  <title>Privacy Policy · Mindo AI</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e8eee6; background: #14251e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; line-height: 1.7; }
+    .page { max-width: 820px; margin: 0 auto; padding: 38px 28px 54px; }
+    header { border-bottom: 1px solid #42594b; padding-bottom: 25px; margin-bottom: 30px; }
+    .brand { margin: 0 0 12px; color: #b4d7b4; font-size: .85rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 6vw, 3rem); line-height: 1.15; letter-spacing: -.03em; }
+    h2 { margin: 30px 0 10px; color: #e9e0b9; font-size: 1.2rem; line-height: 1.35; }
+    h3 { margin: 22px 0 8px; font-size: 1rem; }
+    p, ul { margin: 12px 0; }
+    ul { padding-left: 23px; }
+    li + li { margin-top: 6px; }
+    a { color: #a9e0b3; text-underline-offset: .18em; overflow-wrap: anywhere; }
+    a:hover { color: #e9e0b9; }
+    a:focus-visible { outline: 3px solid #e9e0b9; outline-offset: 4px; border-radius: 2px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 20px; }
+    .meta, footer { color: #b6c6b9; font-size: .9rem; }
+    .summary { padding: 16px 20px; background: #20392b; border: 1px solid #4f6b54; border-radius: 10px; }
+    code { font: .92em ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    footer { margin-top: 38px; padding-top: 20px; border-top: 1px solid #42594b; }
+    @media (max-width: 520px) { .page { padding: 26px 20px 36px; } .summary { padding: 13px 15px; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <p class="brand">Mindo AI</p>
+      <h1>Privacy Policy</h1>
+      <p class="meta">Effective date: <time datetime="2026-10-27">27 October 2026</time></p>
+      <nav aria-label="Legal information">
+        <a href="/terms.html">Terms of Service</a>
+        <a href="/privacy.html" aria-current="page">Privacy Policy</a>
+        <a href="mailto:nikolaypilotov@gmail.com">Contact</a>
+      </nav>
+    </header>
+    <main>
+      <p class="summary">The <strong>Mindo AI developer team</strong> operates the <strong>Mindo_AI_Verifier</strong> Discord application and <strong>Forest Trail</strong>. This policy covers the whole application, including optional X linking, community verification, staff tools and the game. For privacy requests, email <a href="mailto:nikolaypilotov@gmail.com">nikolaypilotov@gmail.com</a>.</p>
+
+      <h2>1. Information processed by each feature</h2>
+      <h3>Discord identity and access</h3>
+      <p>The application processes Discord user IDs, names or server nicknames, avatar URLs, server/channel identifiers and the membership or role information needed for access checks and community features. Forest Trail requests the <code>identify</code> permission and, when launched in a server, <code>guilds.members.read</code>. Authorization codes, access tokens and session credentials are processed to establish authorized connections.</p>
+
+      <h3>Optional X linking and community verification</h3>
+      <p>If you link X, the application reads your X account ID, username, display name, avatar URL and verification status/type. It stores the association with your Discord account and the linking time. X authorization credentials are used to obtain the requested account information; they are not part of the saved account-link record.</p>
+      <p>When you submit a screenshot for verification, the application downloads the submitted image, reads its text using OCR software on the application server, compares the result with the linked account and applicable project rules, and may assign a Discord tier role. It stores verification history and metrics and can generate a profile card. Avatars and rendered profile cards may be cached. This screenshot-processing workflow uses local OCR software rather than an external AI service.</p>
+
+      <h3>Staff reports, moderation and campaigns</h3>
+      <p>When authorized staff request supported reports or moderation actions, the bot may read accessible channel history, message authors, exact message text, timestamps, proof links, and attachment metadata or URLs. Reports can therefore include information about server members who have not played the game or directly used its verification features. Reports may be exported as files and uploaded to Discord. Supported moderation functions can identify and remove duplicate proofs when the bot has the necessary access. Configured duplicate-proof checks and welcome features can also run automatically; welcome messages may display a joining member's name, avatar or banner in configured Discord channels.</p>
+      <p>For requested X-reply raffles, the application retrieves public reply information such as author/comment IDs, usernames, text and timestamps. Campaign records may include candidate and selected IDs, winners/results, the requesting Discord identity, server ID and time.</p>
+
+      <h3>Forest Trail</h3>
+      <p>The game stores your Discord identity, displayed name/avatar, level progress, attempt identifier and configuration, attempt start time/status, and computed results such as verified level, score, elapsed time and layout. Records are associated with your Discord ID within a server/campaign. Movement inputs are submitted to the server to replay and verify a run. Persistent game records retain the attempt configuration and computed result rather than the raw movement trace.</p>
+
+      <h3>Device settings and technical information</h3>
+      <p>The game uses browser local storage for preferences such as sound and selected character, challenge settings and local progress/records where those features are used. Requests can also produce technical logs containing information such as IP addresses, request times and paths, user identifiers, errors and processing duration. Hosting and platform providers may process their own technical information when delivering the service.</p>
+
+      <h2>2. Why information is used</h2>
+      <p>Information is used to connect the account you authorize, check server and role eligibility, provide the requested verification or community feature, generate profile cards and reports, operate campaigns, preserve game progress, verify results, show rankings, investigate errors and respond to support or abuse reports.</p>
+
+      <h2>3. Visibility and sharing</h2>
+      <ul>
+        <li><strong>Community features:</strong> linked X identity, verification status and metrics may be displayed in Discord or generated profile cards. Linked-account information and metrics can also be retrieved through application endpoints using a Discord user ID; these are not owner-only records.</li>
+        <li><strong>Rankings:</strong> authorized players can see ranked players' Discord IDs, displayed names, avatar URLs and best verified game results for their shared server/campaign.</li>
+        <li><strong>Reports and campaigns:</strong> information in exported staff reports, proof submissions, campaign entries and results is visible to people with access to the relevant Discord messages, files or reports. Copies exported by recipients may remain separately.</li>
+        <li><strong>Service providers:</strong> Discord delivers interactions, identity/role information and uploaded messages or files. X supplies authorized account information and public replies. Railway provides the application's hosting and PostgreSQL infrastructure. The X-linking confirmation page loads a font from Google Fonts, so its delivery involves a browser request to Google. These providers operate their own services under their own policies.</li>
+        <li><strong>Support:</strong> the operator receives the information you choose to include when contacting the published support email. Email providers, including Gmail for this address, process delivery of those messages.</li>
+      </ul>
+
+      <h2>4. Storage and retention</h2>
+      <p>Game login sessions are held in application memory, have a maximum validity of one hour and are cleared when the process restarts. Expired sessions are removed during access or subsequent login handling. Ending a session does not remove persistent game records.</p>
+      <p>Persistent account links, community metrics, verification and raffle history, game profiles, progress, attempts, results and image caches do not currently have a general scheduled automatic deletion period. They remain until removed by the operator or as part of handling an applicable deletion request. The service does not promise that all these records disappear when you stop using a feature.</p>
+      <p>Logs, backups, Discord-hosted attachments and copies held by platform providers or report recipients can have separate retention arrangements. This policy does not specify a hosting region or a fixed provider backup/log retention period.</p>
+
+      <h2 id="choices">5. Your choices and requests</h2>
+      <p>You can stop using the application and manage or revoke its authorizations through Discord or X. The <code>/xunlink</code> command removes the stored X link and cached avatar/profile card; it does not by itself erase retained verification history, metrics, game records or raffle records. Disconnecting the game removes the login session, not saved progress or scores. Clearing browser storage removes local device settings and local records, not server records.</p>
+      <p>To request access to, correction of or deletion of information handled by this application, email <a href="mailto:nikolaypilotov@gmail.com">nikolaypilotov@gmail.com</a>. Include your Discord user ID and the feature or records involved so the operator can locate the information. Requests are handled manually, and identity or authority may need to be checked before information is disclosed or changed. Do not send passwords, access tokens or authentication codes.</p>
+      <p>Contact the operator if you believe a staff report contains information that should be corrected or removed. The operator will assess the request, including any applicable requirements and limits involving provider-held data or copies already distributed to others.</p>
+
+      <h2>6. Eligibility and updates</h2>
+      <p>The application is intended for people who meet Discord's minimum age and other eligibility requirements. If you believe information about an ineligible user has been processed, contact the operator. This policy may be updated as features or data handling change; the current version and effective date will be shown on this page.</p>
+    </main>
+    <footer>
+      <p>Mindo_AI_Verifier · Discord application <code>1466831420575186985</code><br />Mindo AI developer team · <a href="mailto:nikolaypilotov@gmail.com">nikolaypilotov@gmail.com</a></p>
+    </footer>
+  </div>
+</body>
+</html>
