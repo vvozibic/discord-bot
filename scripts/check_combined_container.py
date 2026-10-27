@@ -37,6 +37,12 @@ def wait_for(base, path, *, expected=200):
     raise RuntimeError(f"Container did not reach {path} ({expected})")
 
 
+def public_base(name):
+    info = json.loads(docker("inspect", name))[0]
+    port = info["NetworkSettings"]["Ports"]["8000/tcp"][0]["HostPort"]
+    return f"http://127.0.0.1:{port}"
+
+
 def launch(image, name, volume, *, secret=True):
     values = {
         "PORT": "8000", "RAILWAY_ENVIRONMENT_ID": "ci", "RAILWAY_VOLUME_MOUNT_PATH": "/data",
@@ -52,9 +58,7 @@ def launch(image, name, volume, *, secret=True):
         args.extend(["--env", f"{key}={value}"])
     args.extend([image, "python", "start.py", "--web-only"])
     docker(*args)
-    info = json.loads(docker("inspect", name))[0]
-    port = info["NetworkSettings"]["Ports"]["8000/tcp"][0]["HostPort"]
-    return f"http://127.0.0.1:{port}"
+    return public_base(name)
 
 
 def main():
@@ -83,6 +87,7 @@ def main():
         write = "import sqlite3; c=sqlite3.connect('/data/forest-trail.sqlite'); c.execute('INSERT INTO profiles(board,user_id,name,avatar,progress) VALUES(?,?,?,?,?)',('ci-board','123456789012345678','Player','','retained')); c.commit(); c.close()"
         docker("exec", names[0], "python", "-c", write)
         docker("restart", "--time", "10", names[0])
+        base = public_base(names[0])
         wait_for(base, "/readyz")
         read = "import sqlite3; c=sqlite3.connect('/data/forest-trail.sqlite'); print(c.execute('SELECT progress FROM profiles WHERE board=?',('ci-board',)).fetchone()[0]); c.close()"
         assert docker("exec", names[0], "python", "-c", read) == "retained"
