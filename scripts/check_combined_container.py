@@ -1,6 +1,7 @@
 """Exercise the real unified image without any real Discord/OAuth credentials."""
 
 import json
+import http.client
 import subprocess
 import sys
 import time
@@ -30,7 +31,7 @@ def wait_for(base, path, *, expected=200):
             status, body = request(base, path)
             if status == expected:
                 return json.loads(body)
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        except (OSError, http.client.HTTPException, json.JSONDecodeError):
             pass
         time.sleep(0.5)
     raise RuntimeError(f"Container did not reach {path} ({expected})")
@@ -102,7 +103,9 @@ def main():
         print("Combined image passed: one public host, legacy OAuth, private game, persistence, failure supervision and safe missing configuration")
     except Exception:
         for name in names:
-            subprocess.run(["docker", "logs", "--tail", "100", name], check=False)
+            exists = subprocess.run(["docker", "inspect", name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+            if exists.returncode == 0:
+                subprocess.run(["docker", "logs", "--tail", "100", name], check=False, timeout=30)
         raise
     finally:
         for name in names:

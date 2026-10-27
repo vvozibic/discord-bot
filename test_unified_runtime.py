@@ -62,6 +62,15 @@ class UnifiedRuntimeTests(unittest.TestCase):
         self.assertIn('CMD ["python", "start.py"]', dockerfile)
         self.assertIn("node:24-bookworm-slim", dockerfile)
 
+    def test_container_probe_waits_through_connection_reset_and_startup_responses(self):
+        from scripts.check_combined_container import wait_for
+        with patch("scripts.check_combined_container.request", side_effect=[
+            ConnectionResetError("container port is not ready"),
+            (503, b'{}'), (200, b'not-json'), (200, b'{"status":"ok"}'),
+        ]) as request, patch("scripts.check_combined_container.time.sleep"):
+            self.assertEqual(wait_for("http://127.0.0.1:1", "/readyz"), {"status": "ok"})
+        self.assertEqual(request.call_count, 4)
+
 
 if __name__ == "__main__":
     unittest.main()
