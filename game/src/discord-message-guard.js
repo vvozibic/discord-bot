@@ -37,6 +37,12 @@ export function boundedDiscordPayload(value) {
 
 export function protectDiscordMessages(target, source, origins = DISCORD_RPC_ORIGINS) {
   const allowed = new Set(origins);
+  // The native Discord shell forwards RPC using this document's own origin,
+  // which the SDK also permits. Trust only that exact origin and parent.
+  try {
+    const ownOrigin = new URL(target.location?.origin);
+    if (['https:', 'http:'].includes(ownOrigin.protocol)) allowed.add(ownOrigin.origin);
+  } catch { /* Non-browser targets may not have a document origin. */ }
   const guard = event => {
     if (event.source !== source || !allowed.has(event.origin) || !boundedDiscordPayload(event.data))
       event.stopImmediatePropagation();
