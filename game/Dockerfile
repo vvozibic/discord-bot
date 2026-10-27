@@ -6,6 +6,7 @@ COPY . .
 ARG VITE_DISCORD_CLIENT_ID=
 ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
 RUN npm run build
+RUN npm prune --omit=dev
 
 FROM node:24-bookworm-slim
 ENV NODE_ENV=production \
@@ -17,6 +18,7 @@ COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/server ./server
 COPY --from=build --chown=node:node /app/src ./src
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 5179

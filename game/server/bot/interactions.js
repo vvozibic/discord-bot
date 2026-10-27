@@ -36,29 +36,29 @@ export function verifyDiscordRequest(publicKey, signature, timestamp, body, now 
   } catch { return false; }
 }
 
-export function createDiscordBot({ db, clientId = '', publicKey = '', token = '', guildId = '', eventId = 'tag',
+export function createDiscordBot({ db, store:providedStore, clientId = '', publicKey = '', token = '', guildId = '', eventId = 'tag',
   eventName = 'TAG campaign', supportChannelId = '', ticketToolApplicationId = '', testChannelId = '', readRanking,
   now = Date.now, rest = createDiscordRest({ token }), onError = () => console.error('Discord bot operation failed; check bot configuration and permissions.') } = {}) {
-  const store = createBotStore(db, { eventId, now });
+  const store = providedStore ?? createBotStore(db, { eventId, now });
   const testMode = testChannelId !== '';
   const supportTarget = testMode ? testChannelId : supportChannelId;
   const configured = SNOWFLAKE.test(clientId) && SNOWFLAKE.test(guildId) && /^[\da-f]{64}$/i.test(publicKey)
     && (!testMode || (typeof testChannelId === 'string' && SNOWFLAKE.test(testChannelId)));
-  const pending = new Set(), buckets = new Map();
-  function ranking(interaction, profileOnly = false) {
+  const pending = new Set(), requests = new Set(), inFlight = new Map(), buckets = new Map();
+  async function ranking(interaction, profileOnly = false) {
     const userId = interaction.member.user.id;
-    const board = readRanking(interaction.guild_id, userId);
+    const board = await readRanking(interaction.guild_id, userId);
     const own = board.you;
     const lines = profileOnly ? [] : board.rows.slice(0, 10).map(row => `**${row.rank}. ${text(row.name) || 'Player'}** — level ${row.level} · ${row.score} pts`);
     if (!profileOnly && !lines.length) lines.push('No verified results yet. Complete a ranked level to appear here.');
-    if (profileOnly) lines.push(store.participant(interaction.guild_id, userId) ? 'You have joined this campaign.' : 'Use /participate to join this campaign.');
+    if (profileOnly) lines.push(await store.participant(interaction.guild_id, userId) ? 'You have joined this campaign.' : 'Use /participate to join this campaign.');
     lines.push(own ? `\nYour verified result: **#${own.rank}** · level ${own.level} · ${own.score} pts` : '\nYou have no verified wins yet. Launch the game and connect your Discord profile.');
     return message('', { embeds:[{ title:`Forest Trail · ${profileOnly ? 'your participation' : 'server ranking'}`,
       description:lines.join('\n'), color:0x64b484, footer:{ text:`${text(eventName)} · verified wins: ${board.total}` } }], components:buttons() });
   }
-  function join(interaction) {
+  async function join(interaction) {
     const user = interaction.member.user;
-    store.join(interaction.guild_id, { id:user.id, name:interaction.member.nick || user.global_name || user.username });
+    await store.join(interaction.guild_id, { id:user.id, name:interaction.member.nick || user.global_name || user.username });
     return message(`You’re registered for **${text(eventName)}**. Play Forest Trail and connect your Discord profile to submit verified runs. Joining alone does not add a score.`, { components:buttons() });
   }
   function support() {
@@ -111,21 +111,21 @@ export function createDiscordBot({ db, clientId = '', publicKey = '', token = ''
       await rest.request('PATCH', `/webhooks/${clientId}/${interaction.token}/messages/@original`, { content, allowed_mentions:NO_MENTIONS }, { webhook:true });
     } };
   }
-  function dispatch(interaction) {
+  async function dispatch(interaction) {
     const command = interaction.type === 3 ? interaction.data?.custom_id : interaction.data?.name;
     if (interaction.type !== 2 && interaction.type !== 3) return { response:message('Use a Forest Trail slash command or button.') };
     if (interaction.type === 2 && interaction.data?.type === 4) {
-      join(interaction);
+      await join(interaction);
       return { response:{ type:12 } };
     }
     if (command === 'bot-setup' && interaction.type === 2) return setup(interaction);
     if (['play','trail:play'].includes(command)) {
-      join(interaction);
+      await join(interaction);
       return { response:{ type:12 } };
     }
-    if (['participate','trail:join'].includes(command)) return { response:join(interaction) };
-    if (['trail-ranking','trail:ranking'].includes(command)) return { response:ranking(interaction) };
-    if (command === 'trail-profile') return { response:ranking(interaction, true) };
+    if (['participate','trail:join'].includes(command)) return { response:await join(interaction) };
+    if (['trail-ranking','trail:ranking'].includes(command)) return { response:await ranking(interaction) };
+    if (command === 'trail-profile') return { response:await ranking(interaction, true) };
     if (['support','trail:support'].includes(command)) return { response:support() };
     return { response:message('Use /play, /participate, /trail-ranking, /trail-profile or /support.') };
   }
@@ -133,7 +133,25 @@ export function createDiscordBot({ db, clientId = '', publicKey = '', token = ''
     response.writeHead(status, { 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store' });
     response.end(JSON.stringify(data));
   }
-  async function handle(request, response) {
+  async function dispatchOnce(interaction) {
+    const previous = inFlight.get(interaction.id);
+    if (previous) return { response:(await previous).response };
+    const job = (async () => {
+      const cached = await store.cachedInteraction(interaction.id);
+      if (cached) return { response:cached };
+      const key = interaction.member.user.id, time = now();
+      if (buckets.size > 5000) for (const [id, bucket] of buckets) if (bucket.until <= time) buckets.delete(id);
+      let bucket = buckets.get(key);
+      if (!bucket || bucket.until <= time) buckets.set(key, bucket = { until:time + 60000, count:0 });
+      const result = ++bucket.count > 30 ? { response:message('Please wait a moment before trying again.') } : await dispatch(interaction);
+      await store.cacheInteraction(interaction.id, result.response);
+      return result;
+    })();
+    inFlight.set(interaction.id, job);
+    try { return await job; }
+    finally { inFlight.delete(interaction.id); }
+  }
+  async function handleRequest(request, response) {
     if (request.method !== 'POST') { send(response, 405, { error:'POST required' }); return; }
     if (!configured) { send(response, 503, { error:'Discord bot is not configured' }); return; }
     try {
@@ -157,14 +175,7 @@ export function createDiscordBot({ db, clientId = '', publicKey = '', token = ''
       if (interaction.guild_id !== guildId || !SNOWFLAKE.test(interaction.member?.user?.id ?? '') || !SNOWFLAKE.test(interaction.id ?? '')) {
         send(response, 200, message('This bot is available only in its configured server.')); return;
       }
-      const cached = store.cachedInteraction(interaction.id);
-      if (cached) { send(response, 200, cached); return; }
-      const key = interaction.member.user.id, time = now();
-      if (buckets.size > 5000) for (const [id, bucket] of buckets) if (bucket.until <= time) buckets.delete(id);
-      let bucket = buckets.get(key);
-      if (!bucket || bucket.until <= time) buckets.set(key, bucket = { until:time + 60000, count:0 });
-      const result = ++bucket.count > 30 ? { response:message('Please wait a moment before trying again.') } : dispatch(interaction);
-      store.cacheInteraction(interaction.id, result.response);
+      const result = await dispatchOnce(interaction);
       send(response, 200, result.response);
       if (result.after) {
         const task = Promise.resolve().then(result.after).catch(() => onError()).finally(() => pending.delete(task));
@@ -175,5 +186,11 @@ export function createDiscordBot({ db, clientId = '', publicKey = '', token = ''
       if (!response.headersSent) send(response, 500, { error:'The bot is temporarily unavailable' });
     }
   }
-  return { handle, configured, get pendingCount() { return pending.size; }, async whenIdle() { await Promise.allSettled([...pending]); } };
+  function handle(request, response) {
+    const work = handleRequest(request, response);
+    requests.add(work);
+    return work.finally(() => requests.delete(work));
+  }
+  return { handle, configured, get pendingCount() { return pending.size + requests.size; },
+    async whenIdle() { while (pending.size || requests.size) await Promise.allSettled([...pending, ...requests]); } };
 }

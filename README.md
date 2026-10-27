@@ -53,16 +53,23 @@ public domain serves the game and its API as well as the unchanged `/x/*` and
 
 Set `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` for the running bot's own
 application in that service's Railway Variables, and apply the staged changes.
-Attach a persistent volume to the same service, normally at `/data`; the game
-database defaults to `<RAILWAY_VOLUME_MOUNT_PATH>/forest-trail.sqlite`.
-Existing bot database variables and files are not moved. Use one replica with
-the SQLite volume. `GAME_ADMIN_ROLE_IDS` can additionally allow exact admin
+If that service already uses PostgreSQL through `DATABASE_URL`, the game reuses
+the same connection automatically when no SQLite game path/volume is configured.
+It creates only `forest_profiles`, `forest_attempts` and `forest_scores`, keeping
+existing bot tables intact. No additional database service or disk is required.
+
+An existing explicit SQLite path/volume remains selected to preserve saved games;
+its file defaults to `<RAILWAY_VOLUME_MOUNT_PATH>/forest-trail.sqlite`. An explicit
+`GAME_DATABASE_URL` can select PostgreSQL, but does not migrate old SQLite scores.
+Existing bot database variables/files are not moved. Keep one replica because
+active login sessions are in memory. `GAME_ADMIN_ROLE_IDS` can additionally allow exact admin
 role IDs; otherwise players need `beta-tester`, including server owners.
 
 `/healthz` is liveness and reports game configuration separately. `/readyz`
 returns 200 only when the game is configured and its database can be opened;
 it does not perform a user's Discord login. Missing game credentials/storage
-are listed by variable name without secret values. The existing bot stays
+are listed by variable name without secret values. PostgreSQL readiness also
+checks the connection. The existing bot stays
 available, while game authentication/runs fail closed until setup is complete.
 
 `/play` and the persistent **Play Forest Trail** panel button launch this bot's
@@ -88,7 +95,7 @@ the game launcher and panel publishing without affecting other commands.
 
 Scores are validated by the server and stored under Discord user IDs, with the
 latest server nickname for display. Scores and progress survive nickname changes,
-restarts and redeployments when the required Railway volume is attached.
+restarts and redeployments with shared PostgreSQL or a persistent SQLite volume.
 
 Activity hosting does not remove Discord's verification requirements. An
 unverified Activity is restricted to developers/app testers and small servers;

@@ -42,7 +42,7 @@ test('missing or invalid storage disables authorization instead of using ephemer
 });
 
 async function withServer(env, run) {
-  const result = createCombinedServer(env);
+  const result = await createCombinedServer(env);
   await new Promise(resolve => result.server.listen(0, '127.0.0.1', resolve));
   try { await run(`http://127.0.0.1:${result.server.address().port}`, result); }
   finally { await new Promise(resolve => result.server.close(resolve)); }

@@ -9,14 +9,18 @@ import { openDatabase } from '../server/database.js';
 import { replayRun } from '../server/replay.js';
 import { createLevelDirector } from '../src/level-director.js';
 import { recordedVictory } from './fixtures/ranked-run.js';
+import { createSqliteGameStore } from '../server/game-store.js';
+import { withSeededProfiles } from './fixtures/seeded-store.js';
 
 const USERS = { alice:'123456789012345678', bob:'223456789012345678' };
 async function fixture(options = {}) {
   let time = 1000000;
+  const gameStore = withSeededProfiles(createSqliteGameStore(options.databasePath ?? ':memory:',
+    {eventId:options.eventId ?? 'tag',now:()=>time}), 'shared-api-fixed');
   const api = createGameApi({ clientId:'1556624227212460092', now:() => time, authenticate:async ({ code, guildId }) => {
     if (!USERS[code] || guildId === '999999999999999999') throw new Error('Not a member');
     return { profile:{ id:USERS[code], name:code === 'alice' ? 'Alice' : '<Bob>', avatar:'https://cdn.discordapp.com/embed/avatars/0.png' }, accessToken:'fake-discord-token', expiresIn:3600 };
-  }, ...options });
+  }, ...options, gameStore });
   const server = createServer((req, res) => api.handle(req, res, () => { res.writeHead(404); res.end(); }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;

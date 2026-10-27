@@ -27,17 +27,27 @@ as the running Python bot**. The working Mindo AI application ID is
 `1466831420575186985`. Keep actual secrets out of GitHub. No second bot token,
 Interactions Endpoint URL or privileged intent is needed.
 
-Attach a persistent volume to that service, normally at `/data`. With one
-replica, the SQLite game database defaults to
-`<RAILWAY_VOLUME_MOUNT_PATH>/forest-trail.sqlite`; `GAME_DATABASE_PATH` may select
-another file inside that volume. The existing bot's `DATABASE_URL`/`DB_FILE`
-configuration is preserved. Guild/beta scope defaults to the existing Forest
+When the bot already uses PostgreSQL through `DATABASE_URL`, the game reuses
+that connection if no SQLite game path/volume has been selected. There is no
+additional database or filesystem volume to provision. Startup creates only
+three prefixed game tables: `forest_profiles`, `forest_attempts`, `forest_scores`.
+The bot's tables are neither renamed nor cleared. Writes use one checked-out
+connection per transaction and lock the player's profile so simultaneous retries
+cannot create multiple active runs or double-count a finish.
+
+Existing explicit SQLite storage stays selected even if `DATABASE_URL` is also
+present. Its file defaults to `<RAILWAY_VOLUME_MOUNT_PATH>/forest-trail.sqlite`;
+`GAME_DATABASE_PATH` may select another file inside the volume. An explicit
+`GAME_DATABASE_URL` overrides backend selection, without automatically migrating
+old SQLite records. Do not switch a populated backend without a migration plan.
+The existing bot's `DATABASE_URL`/`DB_FILE` configuration is preserved. Keep one
+replica because login sessions are process-local. Guild/beta scope defaults to the existing Forest
 Trail settings. Add exact `GAME_ADMIN_ROLE_IDS` for admins who lack the beta role;
 server-owner status alone does not satisfy the game API's role check.
 
 Use the existing public HTTPS hostname for the Activity URL Mapping. `/healthz`
 is liveness and includes game status/missing variable names; `/readyz` returns
-503 until game configuration and writable persistent storage are available.
+503 until game configuration and its PostgreSQL connection or SQLite storage are available.
 These checks do not exchange a real player's OAuth code. Missing game setup does
 not stop the bot or existing OAuth endpoints, and never enables temporary scores.
 Enable Railway volume backups for results that need to be retained.
@@ -88,8 +98,8 @@ and `guilds.members.read`. The API verifies the app, guild membership and allowe
 beta/admin role IDs before creating a game session. The main game requires a
 connected profile; there is no anonymous local score fallback.
 
-Profiles, level progress, attempts and verified wins are stored on the persistent
-server volume. Identity is keyed by `(server/campaign, Discord user ID)`; the
+Profiles, level progress, attempts and verified wins are stored in the selected
+persistent database. Identity is keyed by `(server/campaign, Discord user ID)`; the
 latest server nickname is displayed separately. Changing a nickname preserves
 scores. The leaderboard uses one best verified result per player. Each submitted
 run is replayed with server rules, rather than trusting a client-supplied score.

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { openDatabase } from '../server/database.js';
 import { createDiscordBot } from '../server/bot/interactions.js';
+import { createBotStore } from '../server/bot/store.js';
 
 const CLIENT = '1556624227212460092';
 const GUILD = '333333333333333333';
@@ -25,6 +26,7 @@ function interaction(command, extra = {}) {
 }
 
 async function fixture(options = {}) {
+  const { storeFactory, ...botOptions } = options;
   const db = openDatabase(':memory:');
   const keys = generateKeyPairSync('ed25519');
   const publicKey = keys.publicKey.export({ format:'der', type:'spki' }).subarray(-32).toString('hex');
@@ -42,8 +44,13 @@ async function fixture(options = {}) {
     readRanking:(guildId, userId) => {
       rankingCalls.push({ guildId, userId });
       return { rows:[], you:null, total:0 };
-    }, rest, onError:() => {}, ...options });
-  const server = createServer((request, response) => bot.handle(request, response));
+    }, rest, onError:() => {}, ...(storeFactory ? { store:storeFactory(db) } : {}), ...botOptions });
+  let bodies = 0;
+  const bodyWaiters = [];
+  const server = createServer((request, response) => {
+    request.once('end', () => { bodies++; for (const item of bodyWaiters) if (bodies >= item.count) item.resolve(); });
+    return bot.handle(request, response);
+  });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/api/discord/interactions`;
   async function send(value, requestOptions = {}) {
@@ -56,6 +63,7 @@ async function fixture(options = {}) {
     return { status:response.status, body:await response.json() };
   }
   return { db, bot, send, calls, rankingCalls,
+    whenBodies(count) { return bodies >= count ? Promise.resolve() : new Promise(resolve => bodyWaiters.push({ count, resolve })); },
     tick(milliseconds) { time += milliseconds; },
     timestamp(offsetSeconds = 0) { return String(Math.floor(time / 1000) + offsetSeconds); },
     async close() {
@@ -77,6 +85,33 @@ test('real Ed25519 signatures reject invalid, tampered, stale and future request
     assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM bot_interaction_cache').get().count, 0);
     assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM bot_participants').get().count, 0);
   } finally { await f.close(); }
+});
+
+test('concurrent duplicate setup interactions perform their external operation only once', async () => {
+  let release, entered, lookups = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  const active = new Promise(resolve => { entered = resolve; });
+  const f = await fixture({ storeFactory:db => {
+    const store = createBotStore(db);
+    return { ...store, async cachedInteraction(id) { lookups++; entered(); await gate; return store.cachedInteraction(id); } };
+  } });
+  try {
+    const command = interaction('bot-setup', { token:'fixture-response-token', member:{permissions:'32',user:{id:USER}},
+      data:{name:'bot-setup',options:[{name:'game-panel',type:1}]} });
+    const first = f.send(command);
+    await active;
+    const second = f.send(command);
+    await f.whenBodies(2);
+    await new Promise(resolve => setImmediate(resolve));
+    release();
+    const responses = await Promise.all([first,second]);
+    await f.bot.whenIdle();
+    assert.deepEqual(responses[0], responses[1]);
+    assert.equal(responses[0].body.type, 5);
+    assert.equal(lookups, 1);
+    assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
+    assert.equal(f.calls.filter(call => call.method === 'PATCH').length, 1);
+  } finally { release(); await f.close(); }
 });
 
 test('a signed application ping succeeds and another application is rejected', async () => {
