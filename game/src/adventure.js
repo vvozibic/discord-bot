@@ -16,6 +16,8 @@ import { getHealth } from './health.js';
 import { claimElderShield, activateShield, activateDash, getNextDashCooldown } from './run-rules.js';
 import { createSimulation, stepSimulation } from './run-simulation.js';
 import { castMagic, setMagicCharacter, magicStatus, staffOrigin, MAGIC_CAST_DURATION } from './magic-rules.js';
+import { activateEmp, empStatus, EMP_DURATION } from './robot-abilities.js';
+import { levelVariantFor } from './level-variants.js';
 import { canCollectCoin, exitStatus, patrolClockRate, trapPhase } from './challenge-rules.js';
 import { createReplayUI, formatTime } from './replay-ui.js';
 import { createLevelDirector } from './level-director.js';
@@ -96,6 +98,7 @@ const ui = createReplayUI({
   isMenuOpen:() => mainMenu?.open ?? true,
   isOverlayOpen:() => rewardsUI?.open ?? false,
   onVerifiedResult:(result,ticket) => rewardsUI?.present(result,ticket),
+  chooseCharacter:preview => characterPicker.choose(preview),
   onStart:config => { mainMenu.hide(); startExpedition(config); },
   getChallenge:() => simulation?.challenge,
   getSimulation:() => simulation,
@@ -122,9 +125,11 @@ mainMenu = createMainMenu({ social,
 createOrientationControl({ social, onNotice:message => tell(message, 8000) });
 const characterPicker = createCharacterPicker({
   getPalette:() => equippedStyle.palette,
+  isLocked:() => Boolean(run && ['ready','running'].includes(run.status)),
+  getRun:() => currentConfig ? {config:currentConfig,run} : null,
   onChange(id) {
+    if (run && ['ready','running'].includes(run.status)) return;
     selectedCharacter = id; heroArt = createHeroArt(id,equippedStyle.palette); canvas.dataset.character = id;
-    if (setMagicCharacter(simulation,id)) runTrace.character(id);
     ui.updateHUD();
   },
   onDialogChange:() => ui.syncPause(),
@@ -360,7 +365,10 @@ function startExpedition(config) {
   simulation = createSimulation(currentConfig);
   ({ expedition, run, player, items, hazards } = simulation);
   runTrace = createRunTrace();
-  if (setMagicCharacter(simulation,selectedCharacter)) runTrace.character(selectedCharacter);
+  selectedCharacter = config.rulesVersion >= 13 ? config.character : characterPicker.selected;
+  heroArt = createHeroArt(selectedCharacter,equippedStyle.palette); canvas.dataset.character = selectedCharacter;
+  characterPicker.setRun(config,run);
+  if (config.rulesVersion < 13 && setMagicCharacter(simulation,selectedCharacter)) runTrace.character(selectedCharacter);
   damageFeedback.clear(); impactFrame = damageFeedback.sample(reducedMotion); pendingDefeat = null;
   cosmeticTrail.clear(); rewardsUI?.resetResult();
   hunterLaughCue.reset();
@@ -377,7 +385,8 @@ function startExpedition(config) {
   questLabel.textContent = simulation.challenge.mechanics.orderedCoins ? 'Find coin 1. Follow the numbered route.' : 'Find 6 coins. Return to the portal.';
   document.querySelector('.location-label').lastChild.textContent = ` ${expedition.layoutName.toUpperCase()}`;
   ui.setSession(expedition, run, config);
-  tell(() => `${simulation.challenge.mechanics.orderedCoins ? 'Find coin 1.' : 'Find six coins.'} ${run.shieldRequiresElder ? 'Ask the elder for a shield.' : getControlsHelp().moveShort}`, 4500);
+  const variant = levelVariantFor(config);
+  tell(() => `${variant ? `${variant.name} · ` : ''}${simulation.challenge.mechanics.orderedCoins ? 'Find coin 1.' : 'Find six coins.'} ${run.shieldRequiresElder ? 'Ask the elder for a shield.' : getControlsHelp().moveShort}`, 4500);
   resizeView();
   publishState(performance.now(), true);
   lastFrame = performance.now();
@@ -395,11 +404,16 @@ function useDash() {
 }
 function useMagic() {
   if (!player || ui.paused || won || lost) return;
+  if (simulation.emp) {
+    if (activateEmp(simulation)) { runTrace.emp(); presentEvents([{type:'emp'}]); ui.updateHUD(); }
+    else tell(`EMP: ${empStatus(simulation).label}`,1600);
+    return;
+  }
   if (castMagic(simulation)) {
     runTrace.magic(); presentEvents([{ type:'magic-cast' }]); ui.updateHUD();
   } else if (simulation.magic?.character === 'wizard') {
     const status = magicStatus(simulation);
-    tell(({ 'Coin 3':'The hunter wakes after coin 3.', 'Too far':'Move closer to the hunter to cast.', Blocked:'Find a clear shot at the hunter.', Defeated:'The hunter is already defeated.' })[status.label] ?? `Magic recharging: ${status.label}`,1600);
+    tell(/^Coin \d+$/.test(status.label) ? `The hunter wakes after ${status.label.toLowerCase()}.` : ({ 'Too far':'Move closer to the hunter to cast.', Blocked:'Find a clear shot at the hunter.', Defeated:'The hunter is already defeated.' })[status.label] ?? `Magic: ${status.label}`,1600);
   }
 }
 function showResult() {
@@ -418,6 +432,7 @@ function showResult() {
 }
 function presentEvents(events) {
   for (const event of events) {
+    if (event.type === 'emp') { audio.shield(); tell('EMP · nearby traps and lasers disabled for 1.5s.',1600); continue; }
     if (event.type === 'magic-cast') { audio.magicCast(); continue; }
     if (event.type === 'magic-hit') {
       audio.magicHit(event.defeated);
@@ -451,7 +466,7 @@ function presentEvents(events) {
     });
     gathered = run.collected;
     if (item.bonus) { audio.bonus(); tell('Bonus coin! +200 points.'); }
-    else { audio.collect(gathered - 1); tell(() => gathered === run.itemCount ? (simulation.challenge.mechanics.exitWindow ? 'All six! Enter the portal while green.' : 'Portal open! Return, or collect bonus coins.') : gathered === 3 && simulation.challenge.mechanics.hunter ? `Hunter waking! ${simulation.challenge.terrain.hunter?.smart ? 'Dodge the amber dash.' : 'Keep moving.'} ${simulation.magic?.character === 'wizard' ? getControlsHelp().magicAction + '.' : ''}` : simulation.challenge.mechanics.orderedCoins ? `Coin ${gathered} found. Next: ${gathered + 1}.` : `Coin found! ${run.itemCount - gathered} left.`); }
+    else { audio.collect(gathered - 1); tell(() => gathered === run.itemCount ? (simulation.challenge.mechanics.exitWindow ? 'All six! Enter the portal while green.' : 'Portal open! Return, or collect bonus coins.') : gathered === (simulation.challenge.terrain.hunter?.wakeAt ?? 3) && simulation.challenge.mechanics.hunter ? `Hunter waking! ${simulation.challenge.terrain.hunter?.smart ? 'Dodge the amber dash.' : 'Keep moving.'} ${simulation.magic?.character === 'wizard' ? getControlsHelp().magicAction + '.' : ''}` : simulation.challenge.mechanics.orderedCoins ? `Coin ${gathered} found. Next: ${gathered + 1}.` : `Coin found! ${run.itemCount - gathered} left.`); }
     countLabel.textContent = `${gathered} / ${run.itemCount}`;
     if (!item.bonus && gathered === run.itemCount) {
       audio.portalOpen();
@@ -514,6 +529,10 @@ function publishState(now, force = false) {
   canvas.dataset.magicCasting = String(Boolean(simulation.magic?.castRemaining > 0));
   canvas.dataset.magicProjectile = String(Boolean(simulation.magic?.projectile));
   canvas.dataset.magicShots = String(simulation.magic?.shots ?? 0);
+  canvas.dataset.empCooldown = (simulation.emp?.cooldown ?? 0).toFixed(2);
+  canvas.dataset.empRemaining = (simulation.emp?.remaining ?? 0).toFixed(2);
+  canvas.dataset.empUses = String(simulation.emp?.uses ?? 0);
+  canvas.dataset.variant = currentConfig.variant ?? 'legacy';
   canvas.dataset.magicHits = String(simulation.magic?.hits ?? 0);
   canvas.dataset.hunterHealth = String(terrain?.hunter?.health ?? '');
   canvas.dataset.hunterStun = (terrain?.hunter?.stunRemaining ?? 0).toFixed(2);
@@ -661,8 +680,9 @@ function drawPulseTraps() {
   if (!simulation) return;
   for (const trap of simulation.challenge.traps) {
     const phase = trapPhase(trap, simulation.challenge.clock);
+    const suppressed = trap.suppressedUntil > simulation.challenge.clock;
     ctx.save();
-    ctx.strokeStyle = phase === 'active' ? '#ff8b7b' : phase === 'warning' ? '#ffda7c' : '#9baca1';
+    ctx.strokeStyle = suppressed ? '#93ebf3' : phase === 'active' ? '#ff8b7b' : phase === 'warning' ? '#ffda7c' : '#9baca1';
     ctx.fillStyle = phase === 'active' ? '#ce423b60' : phase === 'warning' ? '#e5a93838' : '#1d3b2d25';
     ctx.lineWidth = phase === 'idle' ? 1 : 2;
     if (phase === 'idle') ctx.setLineDash([3, 4]);
@@ -672,7 +692,8 @@ function drawPulseTraps() {
       ctx.beginPath(); ctx.arc(trap.x, trap.y, trap.radius - 5, 0, Math.PI * 2); ctx.stroke();
     }
     ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = phase === 'active' ? '#ffd0c0' : phase === 'warning' ? '#ffe4a0' : '#b0c2a8';
-    ctx.fillText(phase === 'active' ? '×' : phase === 'warning' ? '!' : '·', trap.x, trap.y + 3);
+    if (suppressed) ctx.fillStyle = '#b7f5ff';
+    ctx.fillText(suppressed ? 'EMP' : phase === 'active' ? '×' : phase === 'warning' ? '!' : '·', trap.x, trap.y + 3);
     if (phase === 'active') {
       for (let index = 0; index < 6; index++) {
         const angle = index / 6 * Math.PI * 2;
@@ -723,15 +744,27 @@ function drawTerrain() {
     ctx.restore();
   }
   for (const beam of terrain.lasers) {
+    const suppressed = beam.suppressedUntil > simulation.challenge.clock;
     ctx.save(); ctx.lineCap = 'round';
-    ctx.strokeStyle = beam.state === 'active' ? '#ff544f60' : beam.state === 'warning' ? '#ffd079' : '#b3bcb088';
+    ctx.strokeStyle = suppressed ? '#93ebf3' : beam.state === 'active' ? '#ff544f60' : beam.state === 'warning' ? '#ffd079' : '#b3bcb088';
     ctx.lineWidth = beam.state === 'active' ? 10 : 1;
     if (beam.state !== 'active') ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.moveTo(beam.x1, beam.y); ctx.lineTo(beam.x2, beam.y); ctx.stroke(); ctx.setLineDash([]);
     if (beam.state === 'active') { ctx.strokeStyle = '#ffe9af'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(beam.x1, beam.y); ctx.lineTo(beam.x2, beam.y); ctx.stroke(); }
     for (const x of [beam.x1,beam.x2]) { rect(ctx,x-4,beam.y-4,8,8,'#48534b'); rect(ctx,x-2,beam.y-2,4,4,beam.state === 'active' ? '#ff9380' : beam.state === 'warning' ? '#ffcf79' : '#a7b3a2'); }
+    if (suppressed) {ctx.font='bold 9px monospace';ctx.textAlign='center';ctx.fillStyle='#b7f5ff';ctx.fillText('EMP',(beam.x1+beam.x2)/2,beam.y-9);}
     ctx.restore();
   }
+}
+function drawEmp() {
+  const emp = simulation?.emp;
+  if (!emp?.origin || emp.remaining <= 0) return;
+  const fraction = Math.max(0,Math.min(1,emp.remaining/EMP_DURATION));
+  ctx.save(); ctx.strokeStyle='#a2eff7'; ctx.fillStyle='#75dce810'; ctx.lineWidth=1.5;
+  ctx.setLineDash([5,5]); ctx.beginPath(); ctx.arc(emp.origin.x,emp.origin.y,emp.radius,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+  if (!reducedMotion) {ctx.globalAlpha=fraction;ctx.beginPath();ctx.arc(emp.origin.x,emp.origin.y,emp.radius*(1-fraction),0,Math.PI*2);ctx.stroke();}
+  ctx.globalAlpha=1;ctx.font='bold 10px monospace';ctx.textAlign='center';ctx.fillStyle='#c7f8ff';
+  ctx.fillText(`EMP ${emp.remaining.toFixed(1)}s`,emp.origin.x,emp.origin.y-42);ctx.restore();
 }
 function drawObjectiveArrow() {
   if (!simulation?.challenge.mechanics.orderedCoins || won || lost) return;
@@ -770,6 +803,7 @@ function draw(time) {
   }
   while (actorIndex < actorOrder.length) drawActor(actorOrder[actorIndex++], time);
   drawMagic(time);
+  drawEmp();
   drawElderMarker();
   drawObjectiveArrow();
   for (const particle of particles) rect(ctx, particle.x, particle.y, 2, 2, particle.life > .35 ? '#c5ffb8' : '#40e8a2');

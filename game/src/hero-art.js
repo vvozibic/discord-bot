@@ -4,8 +4,10 @@ import { paintWizard, WIZARD_CAST_POSES } from './wizard-art.js';
 import { moonlightFrame } from './cosmetic-art.js';
 
 export const HERO_CHARACTERS = Object.freeze([
-  Object.freeze({ id:'wizard', name:'Blue wizard', detail:'Crystal staff. Magic fights the hunter.' }),
-  Object.freeze({ id:'robot', name:'Trail robot', detail:'The original metal trail explorer.' }),
+  Object.freeze({ id:'wizard', name:'Blue wizard', detail:'Staff magic damages and interrupts the hunter.',
+    ability:'Magic recharges in 2 seconds. Get within range with a clear line to the hunter.' }),
+  Object.freeze({ id:'robot', name:'Trail robot', detail:'Heat builds 20% more slowly on hot ground.',
+    ability:'EMP freezes pulse traps and lasers inside a nearby ring around you for 1.5 seconds. Recharges in 10 seconds.' }),
 ]);
 
 const COLORS = {

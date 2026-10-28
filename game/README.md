@@ -127,11 +127,37 @@ progress. Awards and run completion are committed together; duplicate submission
 do not grant duplicate achievements. Historical results are not backfilled when
 the required verified details are unavailable.
 
-New runs use rules version 12. Retry assistance still adds up to ten seconds, but
-the time bonus uses the original level deadline. Already issued versions 1–11
-retain their original replay rules and scores. The compact gameplay HUD keeps the
+New runs use rules version 13. Retry assistance still adds up to ten seconds, but
+the time bonus uses the original level deadline (introduced in version 12).
+Already issued versions 1–12 retain their original replay rules and scores. The compact gameplay HUD keeps the
 quest, time, health and Menu visible; profile, level/score details, rotation,
 character selection and tools are in the paused menu.
+
+## Characters and level variants
+
+Before a new attempt, the character chooser displays the level's variant and a
+suggested explorer. Wizard keeps the existing magic attack against the hunter.
+Robot accumulates heat 20% more slowly, with unchanged cooling, and replaces the
+Magic button with EMP (the same **F** key on desktop). EMP disables pulse traps
+and laser devices within 96 world units of the activation point for 1.5 seconds,
+with a 10-second recharge measured from activation. The pulse ring and highlighted
+devices show the affected area. EMP does not damage the hunter or protect against
+lava, crumbling ground, or patrols.
+
+Odd-numbered levels use **Hunter pursuit**: one heat patch, one pulse trap, no
+laser, and one crumbling site, leaving more room to handle the existing hunter.
+Even-numbered levels use **Ancient machinery**: the full environmental hazards,
+with a hunter that moves at 75% of its usual pursuit speed and wakes at coin 4.
+Both characters can be selected for either variant. Layout and variant remain
+the same when retrying a level.
+
+The server locks the chosen character into the issued attempt. Opening the menu
+or reconnecting cannot switch that character; **Restart** opens a chooser for a
+new attempt. Cancelling the chooser neither starts nor abandons an attempt.
+`GET /api/runs/preview` supplies the briefing without creating a ticket;
+`POST /api/runs` accepts `character` alongside `restart`. New replays reject
+character-change packets and abilities belonging to the other hero. Previously
+issued attempts retain their original mechanics until replaced.
 
 ## Validation
 

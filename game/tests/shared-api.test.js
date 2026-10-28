@@ -42,7 +42,7 @@ test('two authenticated players share a durable board, with one verified best re
     assert.equal(alice.profile.name, 'Alice'); assert.equal(bob.profile.name, '<Bob>');
     for (const session of [alice, bob]) {
       const plan = (await f.request('/runs', { token:session.token, method:'POST', body:{} })).body;
-      assert.equal(plan.config.rulesVersion, 12);
+      assert.equal(plan.config.rulesVersion, 13);
       assert.equal(plan.config.mode, 'storm');
       assert.equal(plan.config.timeLimit, 70);
       assert.deepEqual(plan.config.mechanics, { orderedCoins:true, pulseTraps:true, alarm:true, armor:true, exitWindow:true,
@@ -57,7 +57,7 @@ test('two authenticated players share a durable board, with one verified best re
       const next = (await f.request('/runs', { token:session.token, method:'POST', body:{} })).body;
       assert.equal(next.config.level, 2);
       assert.equal(next.config.layoutId, 'rustworks');
-      assert.equal(next.config.rulesVersion, 12);
+      assert.equal(next.config.rulesVersion, 13);
       assert.equal(next.config.mode, 'storm');
       assert.equal(next.config.timeLimit, 65);
       assert.deepEqual(next.config.enemies, ['wisp','scout','sentinel','scout']);
@@ -98,6 +98,70 @@ test('verified scores remain attached to Discord ID after a server restart and n
   } finally { await f.close(); rmSync(directory, { recursive:true, force:true }); }
 });
 
+test('preview is cancellable, issued heroes are immutable, and restart binds a new choice on the same trail', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'forest-character-api-')), databasePath = join(directory, 'game.sqlite');
+  const board = 'guild:333333333333333333:event:tag';
+  const f = await fixture({ databasePath });
+  const read = query => { const db = openDatabase(databasePath); try { return db.prepare(query).get(); } finally { db.close(); } };
+  try {
+    assert.equal((await f.request('/runs/preview')).status, 401);
+    const alice = await f.login('alice'), bob = await f.login('bob');
+    for (const query of ['?restart=true','?character=robot','?restart=0']) assert.equal((await f.request('/runs/preview' + query, { token:alice.token })).status, 400);
+    const preview = (await f.request('/runs/preview', { token:alice.token })).body;
+    assert.equal(preview.resume, false); assert.equal(preview.config.character, 'wizard');
+    assert.equal(preview.config.variant, 'pursuit'); assert.equal(preview.config.level, 1);
+    assert.equal(read('SELECT COUNT(*) AS count FROM attempts').count, 0);
+    assert.deepEqual((await f.request('/runs/preview', { token:alice.token })).body, preview);
+    assert.equal(read('SELECT COUNT(*) AS count FROM scores').count, 0);
+    const state = JSON.parse(read(`SELECT progress FROM profiles WHERE user_id='${USERS.alice}'`).progress);
+    assert.equal(state.level, 1); assert.equal(state.attempt, 0);
+    for (const body of [{ character:'hunter' }, { character:null }, { character:{} }, { restart:'yes' }, { character:'robot',variant:'machinery' }]) {
+      assert.equal((await f.request('/runs', { token:alice.token, method:'POST', body })).status, 400);
+    }
+    assert.equal(read('SELECT COUNT(*) AS count FROM attempts').count, 0);
+    const robot = (await f.request('/runs', { token:alice.token, method:'POST', body:{ character:'robot' } })).body;
+    assert.equal(robot.config.character, 'robot'); assert.equal(robot.config.variant, 'pursuit');
+    assert.equal(robot.config.seed, preview.config.seed); assert.equal(robot.config.layoutId, preview.config.layoutId);
+    assert.deepEqual((await f.request('/runs', { token:alice.token, method:'POST', body:{ character:'wizard' } })).body, robot);
+    assert.deepEqual((await f.request('/runs/preview', { token:alice.token })).body, { config:robot.config,resume:true });
+    assert.equal((await f.request('/runs/preview', { token:bob.token })).body.resume, false);
+    const restartPreview = (await f.request('/runs/preview?restart=1', { token:alice.token })).body;
+    assert.equal(restartPreview.resume, false); assert.equal(restartPreview.config.variant, robot.config.variant);
+    assert.equal(read('SELECT COUNT(*) AS count FROM attempts').count, 1);
+    assert.deepEqual((await f.request('/runs', { token:alice.token, method:'POST', body:{} })).body, robot, 'cancelling a restart preview leaves the exact old ticket active');
+    const wizard = (await f.request('/runs', { token:alice.token, method:'POST', body:{ restart:true,character:'wizard' } })).body;
+    assert.notEqual(wizard.ticket, robot.ticket); assert.notEqual(wizard.config.id, robot.config.id);
+    assert.equal(wizard.config.character, 'wizard'); assert.equal(wizard.config.seed, robot.config.seed);
+    assert.equal(wizard.config.variant, robot.config.variant); assert.equal(wizard.config.level, robot.config.level);
+    assert.equal((await f.request('/runs/finish', { token:alice.token, method:'POST', body:{ ticket:robot.ticket,trace:[] } })).status, 409);
+    const recording = recordedVictory(wizard.config); f.tick(recording.seconds + 1);
+    const result = await f.request('/runs/finish', { token:alice.token, method:'POST', body:{ ticket:wizard.ticket,trace:recording.trace,character:'robot' } });
+    assert.equal(result.status, 200); assert.equal(result.body.status, 'won');
+    const next = (await f.request('/runs/preview', { token:alice.token })).body;
+    assert.equal(next.config.level, 2); assert.equal(next.config.variant, 'machinery'); assert.equal(next.resume, false);
+    assert.equal(read('SELECT COUNT(*) AS count FROM attempts').count, 2);
+    assert.equal(read(`SELECT COUNT(*) AS count FROM profiles WHERE board='${board}'`).count, 2);
+  } finally { await f.close(); rmSync(directory, { recursive:true, force:true }); }
+});
+
+test('a robot completes verified pursuit and machinery trails with EMP without earning a hunter kill', async () => {
+  const f = await fixture();
+  try {
+    const alice = await f.login('alice');
+    for (const variant of ['pursuit','machinery']) {
+      const plan = (await f.request('/runs', { token:alice.token,method:'POST',body:{ character:'robot' } })).body;
+      assert.equal(plan.config.character, 'robot'); assert.equal(plan.config.variant, variant);
+      const recording = recordedVictory(plan.config), verified = replayRun(plan.config, recording.trace);
+      assert.ok(verified.empUses > 0); assert.equal(verified.magicShots, 0); assert.equal(verified.hunterDefeated, false);
+      assert.equal(recording.trace.some(packet => packet[4] & 56), false);
+      f.tick(recording.seconds + 1);
+      const result = await f.request('/runs/finish', { token:alice.token,method:'POST',body:{ticket:plan.ticket,trace:recording.trace} });
+      assert.equal(result.status, 200); assert.equal(result.body.status, 'won');
+      assert.equal(result.body.rewards.unlocked.includes('hunter-slayer'), false);
+    }
+  } finally { await f.close(); }
+});
+
 test('an outstanding ticket with implicit legacy rules survives deployment and advances to hard rules after finishing', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'forest-trail-legacy-api-'));
   const path = join(directory, 'rankings.sqlite'), board = 'guild:333333333333333333:event:tag';
@@ -115,6 +179,9 @@ test('an outstanding ticket with implicit legacy rules survives deployment and a
   const f = await fixture({ databasePath:path });
   try {
     const alice = await f.login('alice');
+    const preview = await f.request('/runs/preview?restart=1', { token:alice.token });
+    assert.equal(preview.body.config.rulesVersion, 13);
+    assert.equal(preview.body.resume, false);
     const resumed = await f.request('/runs', { token:alice.token, method:'POST', body:{} });
     assert.equal(resumed.status, 200);
     assert.equal(resumed.body.ticket, 'legacy-ready-ticket');
@@ -126,14 +193,14 @@ test('an outstanding ticket with implicit legacy rules survives deployment and a
     assert.equal(result.body.score, replayRun(legacy, recording.trace).score);
     const next = await f.request('/runs', { token:alice.token, method:'POST', body:{} });
     assert.equal(next.status, 200); assert.notEqual(next.body.ticket, resumed.body.ticket);
-    assert.equal(next.body.config.level, 3); assert.equal(next.body.config.rulesVersion, 12);
+    assert.equal(next.body.config.level, 3); assert.equal(next.body.config.rulesVersion, 13);
     assert.equal(next.body.config.timeLimit, 60); assert.equal(next.body.config.maxHits, 3);
     assert.equal(next.body.config.mechanics.orderedCoins, true);
     assert.equal((await f.request('/leaderboard', { token:alice.token })).body.you.level, 2);
   } finally { await f.close(); rmSync(directory, { recursive:true, force:true }); }
 });
 
-for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11]) test(`an outstanding version-${rulesVersion} ticket keeps its rules and finishes before version-twelve progression`, async () => {
+for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11,12]) test(`an outstanding version-${rulesVersion} ticket keeps its rules and finishes before version-thirteen progression`, async () => {
   const directory = mkdtempSync(join(tmpdir(), `forest-trail-v${rulesVersion}-api-`));
   const path = join(directory, 'rankings.sqlite'), board = 'guild:333333333333333333:event:tag';
   const saved = { version:1, seed:`v${rulesVersion}-issued-api`, level:1, skill:0, streak:0, attempt:0, recentMaps:[],
@@ -149,6 +216,9 @@ for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11]) test(`an outstanding version
   const f = await fixture({ databasePath:path });
   try {
     const alice = await f.login('alice');
+    const preview = await f.request('/runs/preview?restart=1', { token:alice.token });
+    assert.equal(preview.body.config.rulesVersion, 13);
+    assert.equal(preview.body.resume, false);
     const resumed = await f.request('/runs', { token:alice.token, method:'POST', body:{} });
     assert.equal(resumed.body.ticket, `v${rulesVersion}-ready-ticket`);
     assert.deepEqual(resumed.body.config, previous);
@@ -160,7 +230,7 @@ for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11]) test(`an outstanding version
     assert.equal(result.status, 200); assert.equal(result.body.status, 'won');
     assert.equal(result.body.score, replayRun(previous, recording.trace).score);
     const next = await f.request('/runs', { token:alice.token, method:'POST', body:{} });
-    assert.equal(next.body.config.level, 2); assert.equal(next.body.config.rulesVersion, 12);
+    assert.equal(next.body.config.level, 2); assert.equal(next.body.config.rulesVersion, 13);
     assert.equal(next.body.config.mechanics.lava, true); assert.equal(next.body.config.mechanics.dash, true);
   } finally { await f.close(); rmSync(directory, { recursive:true, force:true }); }
 });

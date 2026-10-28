@@ -12,8 +12,8 @@ const databaseUrl = process.env.GAME_TEST_DATABASE_URL;
 const USERS = { alice:'123456789012345678', bob:'223456789012345678' };
 const GUILD = '333333333333333333';
 
-async function fixture(eventId, clock, names = { alice:'Alice', bob:'Bob' }) {
-  const gameStore = withSeededProfiles(await openPostgresGameStore(databaseUrl), 'postgres-api-fixed');
+async function fixture(eventId, clock, names = { alice:'Alice', bob:'Bob' }, seed = 'postgres-api-fixed') {
+  const gameStore = withSeededProfiles(await openPostgresGameStore(databaseUrl), seed);
   const api = createGameApi({ gameStore, eventId, clientId:'1466831420575186985', now:() => clock.time,
     authenticate:async ({ code, guildId }) => {
       if (!USERS[code] || guildId !== GUILD) throw new Error('Not a member');
@@ -113,4 +113,31 @@ test('PostgreSQL rejects foreign tickets and rolls back invalid replays without 
     const refreshed=await f.login('alice');
     assert.equal((await f.request('/runs/finish',{token:refreshed.token,body:{ticket:restarted.body.ticket,trace:[]}})).status,409);
   } finally {await f.close();await clearBoard(pool,board);}
+});
+
+test('PostgreSQL previews create no attempt and character binding is shared across API instances', { skip:!databaseUrl, timeout:30000 }, async t => {
+  const eventId=`postgres-characters-${randomUUID()}`,board=`guild:${GUILD}:event:${eventId}`,clock={time:1000000};
+  const first=await fixture(eventId,clock,undefined,'robot-1'),second=await fixture(eventId,clock,undefined,'robot-1');
+  const pool=new Pool({connectionString:databaseUrl});
+  t.after(()=>first.close());t.after(()=>second.close());t.after(()=>pool.end());
+  try {
+    const [a,b]=await Promise.all([first.login('alice'),second.login('alice')]);
+    const preview=(await first.request('/runs/preview',{token:a.token})).body;
+    assert.equal(preview.resume,false);assert.equal(preview.config.variant,'pursuit');
+    assert.equal(Number((await pool.query('SELECT COUNT(*) AS count FROM forest_attempts WHERE board=$1',[board])).rows[0].count),0);
+    const robot=(await first.request('/runs',{token:a.token,body:{character:'robot'}})).body;
+    assert.equal(robot.config.character,'robot');
+    assert.deepEqual((await second.request('/runs',{token:b.token,body:{character:'wizard'}})).body,robot);
+    await second.request('/runs/preview?restart=1',{token:b.token});
+    assert.deepEqual((await second.request('/runs/preview',{token:b.token})).body,{config:robot.config,resume:true});
+    const recording=recordedVictory(robot.config);clock.time+=(recording.seconds+1)*1000;
+    const result=await second.request('/runs/finish',{token:b.token,body:{ticket:robot.ticket,trace:recording.trace}});
+    assert.equal(result.status,200);assert.equal(result.body.status,'won');
+    const next=(await first.request('/runs/preview',{token:a.token})).body;
+    assert.equal(next.config.level,2);assert.equal(next.config.variant,'machinery');
+    const wizard=(await first.request('/runs',{token:a.token,body:{character:'wizard'}})).body;
+    const restarted=(await second.request('/runs',{token:b.token,body:{restart:true,character:'robot'}})).body;
+    assert.notEqual(restarted.ticket,wizard.ticket);assert.equal(restarted.config.character,'robot');
+    assert.equal(restarted.config.variant,wizard.config.variant);assert.equal(restarted.config.seed,wizard.config.seed);
+  } finally {await Promise.all([first.close(),second.close()]);await clearBoard(pool,board);}
 });

@@ -140,3 +140,28 @@ test('ranked verification rejects unavailable dash abilities and unknown action 
   for (const actions of [-1, 1.5, 64, NaN, Infinity, true]) assert.throws(() => replayRun(config, [[1,1,1,0,actions,0]]), /Invalid input packet/);
   assert.throws(() => replayRun(config, [[1,1,1,0,4,0]]), /Elder gifts are not enabled/);
 });
+
+test('version-thirteen replay rejects hero switches and abilities belonging to the other hero', () => {
+  const config = legacyConfig('locked-hero', { rulesVersion:13,character:'robot',variant:'machinery',timeLimit:150,scoreTimeLimit:150 });
+  for (const actions of [16,32]) assert.throws(() => replayRun(config, [[1,1,1,0,actions,0]]), /character is locked/);
+  assert.throws(() => replayRun(config, [[1,1,1,0,8,0]]), /Only the wizard/);
+  assert.throws(() => replayRun({ ...config,character:'wizard' }, [[1,1,1,0,64,0]]), /Only the robot/);
+  assert.throws(() => replayRun({ ...config,rulesVersion:12 }, [[1,1,1,0,64,0]]), /Invalid input packet/);
+  assert.throws(() => replayRun(config, [[1,1,1,0,128,0]]), /Invalid input packet/);
+  for (const changed of [{character:'hunter'}, {variant:'custom'}, {character:undefined}]) {
+    assert.throws(() => replayRun({ ...config,...changed }, [[1,1,1,0,0,0]]), /Invalid character or trail variant/);
+  }
+});
+
+test('EMP input is a one-shot action and server replay matches compressed and expanded robot traces', () => {
+  const recorder = createRunTrace();
+  recorder.step(1,1,0); recorder.emp(); recorder.step(0); recorder.step(0);
+  assert.deepEqual(recorder.snapshot(), [[1,1,1,0,0,0],[2,0,0,0,64,0]]);
+  const disabled = Object.fromEntries(Object.keys(DEFAULT_MECHANICS).map(key => [key,false]));
+  const config = legacyConfig('emp-one-shot', { rulesVersion:13,character:'robot',variant:'machinery',mode:'storm',timeLimit:150,scoreTimeLimit:150,mechanics:disabled });
+  const compressed = [[1,1,1,0,0,0],[8999,0,0,0,64,0]];
+  const expanded = compressed.flatMap(([ticks,kind,x,y,actions,repath]) => Array.from({length:ticks},(_,index) => [1,kind,x,y,index ? 0 : actions,index ? 0 : repath]));
+  const result = replayRun(config, compressed);
+  assert.equal(result.status,'failed'); assert.equal(result.empUses,1);
+  assert.deepEqual(replayRun(config,expanded),result);
+});

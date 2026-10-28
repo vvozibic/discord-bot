@@ -137,14 +137,23 @@
       </section>
 
     </main>
-    <dialog id="character-dialog" class="game-dialog character-dialog" aria-labelledby="character-title" aria-describedby="character-intro">
+    <dialog id="character-dialog" class="game-dialog character-dialog" aria-labelledby="character-title" aria-describedby="character-intro character-lock-note">
       <div class="dialog-content">
         <div class="dialog-eyebrow">CHOOSE YOUR EXPLORER</div>
-        <h2 id="character-title">Your character</h2>
-        <p id="character-intro" class="dialog-intro">The wizard can cast magic at the hunter.</p>
+        <h2 id="character-title" tabindex="-1">Choose your explorer</h2>
+        <p id="character-intro" class="dialog-intro">Choose a play style before your next trail.</p>
+        <section id="character-briefing" class="character-briefing" aria-labelledby="character-variant-title" hidden>
+          <h3 id="character-variant-title"></h3>
+          <p id="character-variant-detail"></p>
+          <p id="character-recommendation" class="character-recommendation"></p>
+        </section>
         <div id="character-options" class="character-options" role="group" aria-label="Playable characters"></div>
         <p id="character-status" class="visually-hidden" role="status"></p>
-        <button id="close-characters" class="primary-button" type="button">Back to menu</button>
+        <p id="character-lock-note" class="character-lock-note"></p>
+        <div class="character-actions">
+          <button id="confirm-character" class="primary-button" type="button" hidden>Start trail</button>
+          <button id="close-characters" class="secondary-button" type="button">Back to menu</button>
+        </div>
       </div>
     </dialog>
     <dialog id="elder-dialog" class="game-dialog elder-dialog" aria-labelledby="elder-title" aria-describedby="elder-copy">

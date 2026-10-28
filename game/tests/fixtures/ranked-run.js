@@ -4,9 +4,10 @@ import { createSimulation, stepSimulation } from '../../src/run-simulation.js';
 import { trapPhase, exitStatus, patrolClockRate, advancedHazard } from '../../src/challenge-rules.js';
 import { lavaContains } from '../../src/terrain-hazards.js';
 import { setMagicCharacter, magicStatus } from '../../src/magic-rules.js';
+import { empStatus } from '../../src/robot-abilities.js';
 
 export function recordedVictory(config, { bonuses = true, repeatTarget = false } = {}) {
-  if ([2,3,4,5,6,7,8,9,10,11,12].includes(config.rulesVersion)) return recordedHardVictory(config, { bonuses, repeatTarget });
+  if ([2,3,4,5,6,7,8,9,10,11,12,13].includes(config.rulesVersion)) return recordedHardVictory(config, { bonuses, repeatTarget });
   const expedition = createExpedition(config.seed, { layoutId:config.layoutId, hazardCount:config.enemies.length });
   const player = { ...SPAWN }, trace = createRunTrace();
   const goals = [...(bonuses ? expedition.bonuses : []), ...expedition.items, { ...PORTAL }];
@@ -44,8 +45,8 @@ function recordedHardVictory(config, { bonuses, repeatTarget }) {
 
 function hardAttempt(config, { bonuses, repeatTarget, warmupTicks }) {
   const sim = createSimulation(config), trace = createRunTrace(), dt = 1 / 60;
-  // Current runs use the wizard's actual spell input to counter hunter charges.
-  if (config.rulesVersion >= 11) { setMagicCharacter(sim,'wizard'); trace.character('wizard'); }
+  // Old runs selected their hero through an input. New tickets bind it before play.
+  if (config.rulesVersion >= 11 && config.rulesVersion < 13) { setMagicCharacter(sim,'wizard'); trace.character('wizard'); }
   const bonusGoals = bonuses ? sim.items.filter(item => item.bonus) : [];
   bonusGoals.sort((a, b) => Math.hypot(a.x - sim.player.x, a.y - sim.player.y) - Math.hypot(b.x - sim.player.x, b.y - sim.player.y));
   const goals = [...(config.rulesVersion >= 5 ? [{ x:GUARDIAN.x, y:GUARDIAN.y + 25, elder:true }] : []), ...bonusGoals, ...sim.items.filter(item => !item.bonus), { ...PORTAL, portal:true }];
@@ -113,6 +114,11 @@ function hardAttempt(config, { bonuses, repeatTarget, warmupTicks }) {
     const repath = !wait && (repeatTarget && ticks % 121 === 0 || !sim.path.length);
     const input = wait ? { kind:0, shield } : { kind:2, x:goal.x, y:goal.y, repath, shield, dash };
     if (config.rulesVersion >= 11 && magicStatus(sim).ready) { input.magic = true; trace.magic(); }
+    if (config.rulesVersion >= 13 && empStatus(sim).ready
+      && (danger || terrain?.lasers.some(laser => Math.hypot(sim.player.x - (laser.x1 + laser.x2) / 2, sim.player.y - laser.y) < 85)
+        || sim.challenge.traps.some(trap => Math.hypot(sim.player.x - trap.x, sim.player.y - trap.y) < 85))) {
+      input.emp = true; trace.emp();
+    }
     if (input.shield) trace.shield();
     if (input.dash) trace.dash();
     if (input.repath) trace.repath();

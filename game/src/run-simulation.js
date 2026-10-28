@@ -4,6 +4,7 @@ import { createPatrols, updatePatrols } from './enemy-rules.js';
 import { createChallenge, advanceChallenge, patrolClockRate, trapHits, advancedHazard, resolveTerrainHit, canCollectCoin, armExit, exitStatus } from './challenge-rules.js';
 import { createImpact, advanceImpact } from './damage-response.js';
 import { createMagic, setMagicCharacter, castMagic, advanceMagic } from './magic-rules.js';
+import { createEmp, activateEmp, advanceEmp } from './robot-abilities.js';
 
 export function createSimulation(config) {
   const expedition = createExpedition(config.seed, { layoutId:config.layoutId, hazardCount:config.enemies.length });
@@ -18,6 +19,7 @@ export function createSimulation(config) {
     path:[], target:null, clock:0,
     ...(config.rulesVersion >= 4 ? { impact:null, awaitingRepath:false } : {}),
     ...(config.rulesVersion >= 9 ? { magic:createMagic(config) } : {}),
+    ...(config.rulesVersion >= 13 && config.character === 'robot' ? { emp:createEmp() } : {}),
   };
 }
 
@@ -33,12 +35,13 @@ function damageEvent(simulation, hazard) {
 }
 
 /** The browser and ranked verifier use this same fixed-step gameplay order. */
-export function stepSimulation(simulation, { kind = 0, x = 0, y = 0, repath = false, shield = false, dash = false, elder = false, magic = false, character } = {}, dt = 1 / 60) {
+export function stepSimulation(simulation, { kind = 0, x = 0, y = 0, repath = false, shield = false, dash = false, elder = false, magic = false, emp = false, character } = {}, dt = 1 / 60) {
   const { player, run, items, hazards, challenge } = simulation;
   const events = [];
   if (['won','failed'].includes(run.status) || !Number.isFinite(dt) || dt <= 0) return events;
   if (character) setMagicCharacter(simulation,character);
   if (magic && castMagic(simulation)) events.push({ type:'magic-cast' });
+  if (emp && activateEmp(simulation)) events.push({ type:'emp' });
   if (elder && claimElderShield(run, player)) events.push({ type:'elder-shield' });
   if (shield) activateShield(run);
   if (dash) activateDash(run);
@@ -60,6 +63,7 @@ export function stepSimulation(simulation, { kind = 0, x = 0, y = 0, repath = fa
   if (run.status === 'running') simulation.clock += dt * patrolClockRate(challenge, run);
   advanceRun(run, dt);
   advanceChallenge(challenge, run, dt, player);
+  advanceEmp(simulation, dt);
   events.push(...advanceMagic(simulation,dt));
   updatePatrols(hazards, simulation.clock);
   if (run.status === 'failed') return [{ type:'failed' }];

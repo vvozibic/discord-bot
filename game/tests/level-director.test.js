@@ -26,7 +26,8 @@ const EXPECTED = [
 test('new campaigns start with timed danger, finite armor and all trial mechanics, and resume exactly', () => {
   const storage = memoryStorage(), director = createLevelDirector({ storage, seed:'first-trail' }), first = director.current();
   assert.equal(first.level, 1);
-  assert.equal(first.rulesVersion, 12);
+  assert.equal(first.rulesVersion, 13);
+  assert.equal(first.character, 'wizard'); assert.equal(first.variant, 'pursuit');
   assert.equal(first.mode, 'storm');
   assert.equal(first.timeLimit, 70);
   assert.equal(first.scoreTimeLimit, 70);
@@ -34,7 +35,7 @@ test('new campaigns start with timed danger, finite armor and all trial mechanic
   assert.equal(first.shieldCharges, 1);
   assert.equal(first.maxHits, 4);
   assert.deepEqual(first.mechanics, { orderedCoins:true, pulseTraps:true, alarm:true, armor:true, exitWindow:true, lava:true, crumble:true, lasers:true, hunter:true, dash:true });
-  assert.match(first.id, /:hard-v12$/);
+  assert.match(first.id, /:hard-v13:(pursuit|machinery):wizard$/);
   assert.deepEqual(director.current(), first);
   assert.deepEqual(createLevelDirector({ storage }).current(), first);
   director.current().enemies.push('sentinel'); director.current().mechanics.alarm = false;
@@ -87,6 +88,28 @@ test('stale results cannot advance progression twice and restarts never skip lev
   assert.deepEqual(director.current(), second);
 });
 
+test('character bindings survive reloads and variants alternate by level without changing on retry', () => {
+  const storage = memoryStorage(), director = createLevelDirector({ storage, seed:'character-variants' });
+  assert.throws(() => director.current({ character:'hunter' }), /wizard or robot/);
+  const wizard = director.current(), robot = director.current({ character:'robot' });
+  assert.equal(robot.character, 'robot'); assert.equal(robot.variant, 'pursuit');
+  assert.notEqual(robot.id, wizard.id);
+  assert.deepEqual(createLevelDirector({ storage }).current(), robot);
+  assert.equal(director.complete(wizard, win(wizard)), false);
+  assert.equal(director.complete({ ...robot, character:'wizard' }, win(robot)), false);
+  assert.equal(director.complete({ ...robot, variant:'machinery' }, win(robot)), false);
+  assert.equal(director.complete(robot, { status:'failed' }), true);
+  const retry = director.current({ character:'robot' });
+  assert.equal(retry.variant, robot.variant); assert.equal(retry.seed, robot.seed);
+  assert.equal(retry.timeLimit, 80); assert.equal(retry.scoreTimeLimit, 70);
+  assert.equal(director.complete(retry, win(retry)), true);
+  for (let level = 2; level <= 6; level++) {
+    const config = director.current({ character:level % 2 ? 'wizard' : 'robot' });
+    assert.equal(config.variant, level % 2 ? 'pursuit' : 'machinery');
+    assert.equal(director.complete(config, win(config)), true);
+  }
+});
+
 test('a win after retry assistance starts the next level with its own base scoring deadline', () => {
   const storage = memoryStorage(), director = createLevelDirector({ storage, seed:'retry-score-transition' });
   const first = director.current();
@@ -134,16 +157,16 @@ test('missing or explicit version one preserves outstanding legacy configuration
     assert.deepEqual(createLevelDirector({ storage }).current(), config);
     assert.equal(director.complete(config, win(config)), true, 'an outstanding legacy result remains accepted');
     const next = director.current();
-    assert.equal(next.level, fixture.level + 1); assert.equal(next.rulesVersion, 12);
+    assert.equal(next.level, fixture.level + 1); assert.equal(next.rulesVersion, 13);
     assert.equal(next.tier, Math.min(5, fixture.level));
   }
 });
 
-test('pending version-two through version-eleven plans retain their original settings, mechanics and exact ids', () => {
+test('pending version-two through version-twelve plans retain their original settings, mechanics and exact ids', () => {
   const enemies = [['wisp','scout'], ['wisp','scout'], ['wisp','scout','sentinel'], ['sentinel','scout','scout'],
     ['sentinel','scout','wisp','scout'], ['sentinel','scout','sentinel','scout']];
   const names = ['Relay gauntlet','Pressure patrol','Danger circuit','Alarm pursuit','Critical route','Overload frontier'];
-  for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11]) for (let tier = 0; tier <= 5; tier++) for (const attempt of [0,2]) {
+  for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11,12]) for (let tier = 0; tier <= 5; tier++) for (const attempt of [0,2]) {
     const level = tier + 1, layoutId = level === 2 ? 'rustworks' : 'crossing';
     const storage = legacyStorage({ level, tier, layoutId, attempt, rulesVersion });
     const saved = storage.getItem(PROGRESS_KEY), director = createLevelDirector({ storage });
@@ -153,19 +176,19 @@ test('pending version-two through version-eleven plans retain their original set
       level, tier, attempt, rulesVersion,
       challengeName:`${layoutId === 'rustworks' ? 'Rustworks' : 'Hard trail'} · ${names[tier]}`,
       mode:'storm', scope:'all', enemies:rulesVersion >= 10 && level === 2 ? ['wisp','scout','sentinel','scout'] : enemies[tier], patrolSpeed:expected.patrolSpeed,
-      timeLimit:expected.timeLimit + (attempt ? 10 : 0), shieldCharges:rulesVersion >= 5 ? 1 : expected.shieldCharges, maxHits:expected.maxHits,
+      timeLimit:expected.timeLimit + (attempt ? 10 : 0), ...(rulesVersion >= 12 ? { scoreTimeLimit:expected.timeLimit } : {}), shieldCharges:rulesVersion >= 5 ? 1 : expected.shieldCharges, maxHits:expected.maxHits,
       mechanics:{ orderedCoins:true, pulseTraps:true, alarm:true, armor:true, exitWindow:true,
         ...(rulesVersion >= 3 ? { lava:true, crumble:true, lasers:true, hunter:true, dash:true } : {}) },
     });
     assert.equal(storage.getItem(PROGRESS_KEY), saved, `a pending v${rulesVersion} ticket must not be rewritten by inspection`);
     assert.deepEqual(createLevelDirector({ storage }).current(), config);
     assert.equal(director.complete(config, win(config)), true, `outstanding v${rulesVersion} results remain valid`);
-    assert.equal(director.current().rulesVersion, 12);
+    assert.equal(director.current().rulesVersion, 13);
   }
 });
 
 test('explicitly upgrading an older hard plan preserves its landscape and gives one elder shield', () => {
-  for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11]) for (const fixture of [
+  for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11,12]) for (const fixture of [
     { level:6, tier:5, layoutId:'waterside', attempt:1 },
     { level:2, tier:0, layoutId:'crossing', attempt:0 },
   ]) {
@@ -175,12 +198,12 @@ test('explicitly upgrading an older hard plan preserves its landscape and gives 
     assert.equal(upgraded.shieldCharges, 1);
     if (upgraded.level === 2) assert.deepEqual(upgraded.enemies, ['wisp','scout','sentinel','scout']);
     else assert.deepEqual(upgraded.enemies, old.enemies);
-    assert.equal(upgraded.rulesVersion, 12);
+    assert.equal(upgraded.rulesVersion, 13);
     assert.equal(upgraded.scoreTimeLimit, EXPECTED[upgraded.tier].timeLimit);
-    assert.match(upgraded.id, /:hard-v12$/);
+    assert.match(upgraded.id, /:hard-v13:(pursuit|machinery):wizard$/);
     assert.equal(Object.keys(upgraded.mechanics).length, 10);
     assert.deepEqual(director.current({ upgrade:true }), upgraded, 'upgrading an already current plan is idempotent');
-    assert.deepEqual(createLevelDirector({ storage }).current(), upgraded, 'version-twelve saves resume exactly');
+    assert.deepEqual(createLevelDirector({ storage }).current(), upgraded, 'version-thirteen saves resume exactly');
     assert.equal(director.complete(old, win(old)), false);
     assert.equal(director.complete(upgraded, win(upgraded)), true);
   }
@@ -190,7 +213,7 @@ test('explicit upgrade replaces only the ready plan at the same level and invali
   const storage = legacyStorage({ level:2, tier:0, layoutId:'crossing', attempt:2 });
   const director = createLevelDirector({ storage }), legacy = director.current(), upgraded = director.current({ upgrade:true });
   for (const key of ['level','seed','attempt']) assert.equal(upgraded[key], legacy[key], key);
-  assert.equal(upgraded.layoutId, 'rustworks'); assert.equal(upgraded.rulesVersion, 12);
+  assert.equal(upgraded.layoutId, 'rustworks'); assert.equal(upgraded.rulesVersion, 13);
   assert.equal(upgraded.tier, 1); assert.equal(upgraded.timeLimit, 75);
   assert.notEqual(upgraded.id, legacy.id);
   assert.equal(director.complete(legacy, win(legacy)), false);
@@ -198,7 +221,7 @@ test('explicit upgrade replaces only the ready plan at the same level and invali
   assert.deepEqual(createLevelDirector({ storage }).current(), upgraded);
   assert.equal(director.complete(upgraded, win(upgraded)), true);
   const third = director.current();
-  assert.equal(third.level, 3); assert.equal(third.rulesVersion, 12); assert.equal(third.tier, 2);
+  assert.equal(third.level, 3); assert.equal(third.rulesVersion, 13); assert.equal(third.tier, 2);
 });
 
 test('new plans from completed or failed legacy saves use hard rules without resetting campaign', () => {
@@ -208,18 +231,18 @@ test('new plans from completed or failed legacy saves use hard rules without res
     if (status === 'won') { saved.level++; saved.attempt = 0; } else saved.attempt++;
     storage.setItem(PROGRESS_KEY, JSON.stringify(saved));
     const config = createLevelDirector({ storage }).current();
-    assert.equal(config.level, saved.level); assert.equal(config.rulesVersion, 12);
+    assert.equal(config.level, saved.level); assert.equal(config.rulesVersion, 13);
     assert.equal(config.tier, Math.min(5, saved.level - 1)); assert.equal(config.attempt, saved.attempt);
     if (status === 'failed') assert.equal(config.layoutId, 'switchback');
   }
 });
 
 test('invalid saves, unsupported rules and unavailable storage leave a playable in-memory campaign', () => {
-  const unsupported = JSON.parse(legacyStorage({ rulesVersion:13 }).getItem(PROGRESS_KEY));
+  const unsupported = JSON.parse(legacyStorage({ rulesVersion:14 }).getItem(PROGRESS_KEY));
   for (const raw of ['{bad', 'null', '{"version":1,"level":-1}', JSON.stringify(unsupported), JSON.stringify({ version:1, seed:'x', level:1, skill:0, streak:0, attempt:0, recentMaps:[], active:{} })]) {
     const storage = memoryStorage(); storage.setItem(PROGRESS_KEY, raw);
     const config = createLevelDirector({ storage, seed:'fallback' }).current();
-    assert.equal(config.level, 1); assert.equal(config.rulesVersion, 12); assert.match(config.seed, /^fallback:/);
+    assert.equal(config.level, 1); assert.equal(config.rulesVersion, 13); assert.match(config.seed, /^fallback:/);
   }
   const director = createLevelDirector({ storage:{ getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } } }), first = director.current();
   assert.equal(director.available, false); assert.equal(director.complete(first, win(first)), true);

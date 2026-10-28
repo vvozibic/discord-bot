@@ -112,9 +112,13 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
       if (session) await request('/discord/session', { method:'DELETE' }).catch(() => {});
       session = null; emit();
     },
-    startRun(restart = false) {
+    previewRun(restart = false) {
       if (!session) throw new Error('Reconnect your Discord profile to continue.');
-      return request('/runs', { method:'POST', body:{ restart } });
+      return request(`/runs/preview${restart ? '?restart=1' : ''}`);
+    },
+    startRun(restart = false, character) {
+      if (!session) throw new Error('Reconnect your Discord profile to continue.');
+      return request('/runs', { method:'POST', body:{ restart, ...(character ? {character} : {}) } });
     },
     async finishRun(ticket, trace) {
       if (!session) throw new Error('Reconnect your Discord profile to save this run.');
