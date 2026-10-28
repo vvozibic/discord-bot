@@ -196,3 +196,31 @@ test('avatar rendering accepts only HTTPS Discord CDN URLs', () => {
   assert.equal(discordAvatarUrl('http://cdn.discordapp.com/0.png'), '');
   assert.ok(discordAvatarUrl('https://cdn.discordapp.com/embed/avatars/0.png'));
 });
+
+test('mobile rotation uses Discord orientation locks without requiring profile sign-in', async () => {
+  const calls = [], service = createDiscordService();
+  service.setSdk({ platform:'mobile', commands:{ setOrientationLockState:async input => { calls.push(input); return {}; } } }, CLIENT);
+  assert.equal(service.mobile, true);
+  await service.setOrientation('landscape');
+  await service.setOrientation('portrait');
+  assert.deepEqual(calls, [
+    { lock_state:3, picture_in_picture_lock_state:1, grid_lock_state:1 },
+    { lock_state:2, picture_in_picture_lock_state:1, grid_lock_state:1 },
+  ]);
+  assert.equal(service.connected, false);
+  await assert.rejects(service.setOrientation('invalid'), /Unknown screen orientation/);
+  service.setSdk({ platform:'desktop', commands:{} }, CLIENT);
+  assert.equal(service.mobile, false);
+  await assert.rejects(service.setOrientation('landscape'), /Rotate your phone/);
+  assert.equal(calls.length, 2);
+});
+
+test('a missing mobile rotation reply times out without holding profile connection busy', async t => {
+  t.mock.timers.enable({ apis:['setTimeout'] });
+  const service = createDiscordService();
+  service.setSdk({ platform:'mobile', commands:{ setOrientationLockState:() => new Promise(() => {}) } }, CLIENT);
+  const failed = assert.rejects(service.setOrientation('landscape'), /Rotate your phone/);
+  t.mock.timers.tick(5000);
+  await failed;
+  assert.equal(service.busy, false);
+});

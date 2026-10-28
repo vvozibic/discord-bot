@@ -14,7 +14,23 @@
       <p>Open Mindo AI's <strong>#beta-testing</strong> channel and use <strong>/play</strong> or the game panel.</p>
       <p>Your progress and verified scores are saved to your Discord profile on the server.</p>
     </section>
-    <main class="game">
+    <main class="game" data-screen="menu">
+      <section id="main-menu" class="main-menu" aria-labelledby="menu-title">
+        <div class="menu-heading"><img src="/assets/pulse-logo.png" width="40" height="40" alt="" /><span>A LITTLE ADVENTURE</span></div>
+        <div class="menu-hero">
+          <div class="menu-emblem" aria-hidden="true"><img src="/assets/pulse-logo.png" width="80" height="80" alt="" /></div>
+          <p class="menu-eyebrow">YOUR NEXT ADVENTURE</p>
+          <h1 id="menu-title">Forest Trail</h1>
+          <p class="menu-copy">Six coins. One way home.<br />Find your path through the forest.</p>
+        </div>
+        <div class="menu-actions">
+          <button id="menu-play" class="menu-play" type="button" disabled><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="m8 4 12 8-12 8z"/></svg><span id="menu-play-label">Start game</span></button>
+          <button id="menu-leaderboard" class="menu-leaderboard" type="button" aria-haspopup="dialog" aria-controls="records-dialog"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v7a4 4 0 0 1-8 0zM8 5H4v3a4 4 0 0 0 4 4M16 5h4v3a4 4 0 0 1-4 4M12 14v6M8 21h8"/></svg>Leaderboard</button>
+        </div>
+        <button class="rotate-screen menu-orientation" data-orientation-button type="button" hidden><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2" transform="rotate(90 12 12)"/><path d="m4 8-2-2 2-2M2 6h3m15 10 2 2-2 2m2-2h-3"/></svg><span><strong data-orientation-label>Landscape mode</strong><small>More room to explore</small></span><span class="orientation-arrow" aria-hidden="true">↗</span></button>
+        <p id="orientation-status" class="orientation-status" role="status" aria-live="polite" hidden></p>
+        <div class="menu-status-area"><p id="menu-status" role="status" aria-live="polite">Connecting to Discord…</p><button id="menu-reload" class="menu-reload" type="button" hidden>Reload Activity</button></div>
+      </section>
       <header class="topline">
         <div class="brand"><img class="brand-mark" src="/assets/pulse-logo.png" width="32" height="32" alt="" /><div><h1>Forest Trail</h1><p>A LITTLE ADVENTURE</p></div></div>
         <div class="account-area">
@@ -96,8 +112,10 @@
         </div>
       </section>
       <footer>
+        <button class="rotate-screen game-orientation" data-orientation-button data-game-orientation type="button" hidden><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="m4 5-2-2m0 0h4M2 3v4m18 12 2 2m0 0h-4m4 0v-4"/></svg><strong data-orientation-label>Landscape mode</strong><span aria-hidden="true">↗</span></button>
         <span class="control-hints"><span class="keyboard-hint"><kbd>WASD</kbd> / <kbd>↑ ← ↓ →</kbd> move <span class="separator">·</span> <kbd>Space</kbd> shield<span id="dash-hint" hidden> <span class="separator">·</span> Move + <kbd>Shift</kbd> dash</span><span id="magic-hint" hidden> <span class="separator">·</span> <kbd>F</kbd> magic</span> <span class="separator">·</span> </span><span class="pointer-hint">Click to walk</span><span class="joystick-hint"><span>Drag to move</span><small>Tap buttons</small></span></span>
         <div class="footer-actions">
+          <button id="open-menu" class="open-menu" type="button">Menu</button>
           <button id="challenge-button" class="lab-button" type="button" aria-haspopup="dialog" aria-controls="challenge-lab" title="Choose challenge mechanics">Lab</button>
           <button id="records-button" class="icon-button" type="button" aria-label="Your records" title="Your records">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v7a4 4 0 0 1-8 0zM8 5H4v3a4 4 0 0 0 4 4M16 5h4v3a4 4 0 0 1-4 4M12 14v6M8 21h8"/></svg>
