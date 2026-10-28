@@ -7,6 +7,7 @@
 .character-briefing p { margin: 0; color: #d1dfca; font-size: 13px; line-height: 1.5; }
 .character-briefing .character-recommendation { margin-top: 7px; color: #c5e8b3; font-size: 12px; font-weight: 650; }
 .character-dialog .character-options { margin: 0 0 14px; gap: 12px; align-items: stretch; }
+.character-dialog[data-selection-locked="true"] .character-options { grid-template-columns: 1fr; }
 .character-dialog .character-card { min-height: 44px; padding: 14px; gap: 8px; cursor: pointer; }
 .character-dialog .character-card canvas { flex-shrink: 0; width: 48px; height: 60px; }
 .character-dialog .character-card strong { font-size: 15px; line-height: 1.3; }

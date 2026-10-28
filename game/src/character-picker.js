@@ -49,6 +49,7 @@ export function createCharacterPicker({ onChange = () => {}, onDialogChange = ()
     intro.textContent = fixed ? 'Your explorer is fixed for this attempt. Both abilities and the route stay the same.'
       : pending ? 'Choose a play style before you start. Both explorers can finish this trail.' : 'Choose your preferred explorer for the next trail.';
     briefing.hidden = !variant;
+    recommendation.hidden = fixed;
     if (variant) {
       variantTitle.textContent = `${Number.isSafeInteger(config?.level) ? `Level ${config.level} · ` : ''}${variant.name}`;
       variantDetail.textContent = variant.description;
@@ -60,11 +61,12 @@ export function createCharacterPicker({ onChange = () => {}, onDialogChange = ()
       const metadata = HERO_CHARACTERS.find(candidate => candidate.id === id);
       const legacy = fixed && Number.isSafeInteger(config?.rulesVersion) && config.rulesVersion < 13;
       card.button.disabled = fixed;
+      card.button.hidden = fixed && !chosen;
       card.button.setAttribute('aria-pressed',String(chosen));
       card.badge.textContent = chosen ? fixed ? 'This trail' : 'Selected' : fixed ? 'Next trail only' : 'Choose';
       card.detail.textContent = legacy ? 'This saved attempt keeps its original abilities.' : metadata.detail;
       card.ability.textContent = legacy ? id === 'robot' ? 'Heat insulation and EMP are available on new trails.' : 'Resume with the original magic rules for this attempt.' : metadata.ability;
-      card.recommended.hidden = !variant || variant.recommendedCharacter !== id;
+      card.recommended.hidden = fixed || !variant || variant.recommendedCharacter !== id;
       paint(card.canvas,id);
     }
     paint(portrait, fixed ? displayed : selected);
