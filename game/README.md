@@ -93,6 +93,14 @@ original launch error in the logs.
 
 ## Scores and identity
 
+The Activity opens on a menu with **Start game**, **Leaderboard**, and a labeled
+orientation control on mobile. Connecting from the leaderboard keeps the ranking
+open without creating a game attempt. Start game signs in when needed, then loads
+the player's verified level. The in-game **Menu** button pauses play, and **Resume
+game** continues the same attempt. Mobile rotation uses Discord's native
+orientation command; if it is unavailable or does not reply, the control recovers
+and explains how to turn the phone manually.
+
 The game connects through Discord's Embedded App SDK and OAuth scopes `identify`
 and `guilds.members.read`. The API verifies the app, guild membership and allowed
 beta/admin role IDs before creating a game session. The main game requires a

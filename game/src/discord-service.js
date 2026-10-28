@@ -1,3 +1,5 @@
+// Discord Embedded App SDK OrientationLockState enum values.
+const ORIENTATION_LOCKS = Object.freeze({ unlocked:1, portrait:2, landscape:3 });
 const CONNECTION_MESSAGES = {
   authorizing:'Finish the Discord authorization window to connect your profile. If no window appears, reload the Activity.',
   verifying:'Checking your Discord profile and server access.',
@@ -44,12 +46,21 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
     get ready() { return Boolean(sdk && config?.configured); },
     get configured() { return Boolean(config?.configured); },
     get insideDiscord() { return Boolean(sdk); },
+    get mobile() { return sdk?.platform === 'mobile'; },
     get busy() { return busy; },
     get connectionStage() { return connectionStage; },
     get connectionMessage() { return CONNECTION_MESSAGES[connectionStage] ?? ''; },
     get connectionError() { return connectionError; },
     get profile() { return session ? { ...session.profile } : null; },
     get boardName() { return session?.boardName ?? config?.eventName ?? 'TAG campaign'; },
+    async setOrientation(orientation) {
+      if (!['landscape', 'portrait'].includes(orientation)) throw new Error('Unknown screen orientation.');
+      if (sdk?.platform !== 'mobile') throw new Error('Rotate your phone to change the view.');
+      return withTimeout(() => sdk.commands.setOrientationLockState({
+        lock_state:ORIENTATION_LOCKS[orientation],
+        picture_in_picture_lock_state:ORIENTATION_LOCKS.unlocked, grid_lock_state:ORIENTATION_LOCKS.unlocked,
+      }), 5000, 'The view could not switch. Rotate your phone and try again.');
+    },
     async connect() {
       if (busy) return;
       if (!sdk) throw new Error('Open Forest Trail inside Discord to connect your profile.');

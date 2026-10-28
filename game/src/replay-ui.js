@@ -20,7 +20,7 @@ export function formatTime(seconds) {
 }
 function setText(element, text) { if (element.textContent !== text) element.textContent = text; }
 
-export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic = () => {}, onPauseChange, onNotice = () => {}, audio, director, social, getTrace, requireProfile = false, getChallenge = () => null, getSimulation = () => null }) {
+export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic = () => {}, onPauseChange, onNotice = () => {}, onError = onNotice, isMenuOpen = () => false, audio, director, social, getTrace, requireProfile = false, getChallenge = () => null, getSimulation = () => null }) {
   const recordsDialog = document.querySelector('#records-dialog');
   const labDialog = document.querySelector('#challenge-lab');
   const elderDialog = document.querySelector('#elder-dialog');
@@ -127,7 +127,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
   }
   social.subscribe(() => { updateProfile(); syncPause(); if (recordsDialog.open && recordsScope === 'shared') renderRecords(); });
 
-  function isPaused() { return (requireProfile && !social.connected) || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting; }
+  function isPaused() { return isMenuOpen() || (requireProfile && !social.connected) || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting; }
   function syncPause() { onPauseChange(isPaused()); }
   function openElder() {
     if (starting || connecting || recordsDialog.open || labDialog.open) return;
@@ -153,11 +153,11 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
         start({ ...planned.config, ticket:planned.ticket }, false);
       } else if (currentConfig?.ticket) throw new Error('Reconnect your profile, or disconnect it to continue locally.');
       else start(localConfig(), false);
-    } catch (error) { onNotice(error.message); }
+    } catch (error) { onError(error.message); }
     finally { starting = false; syncPause(); }
   }
   function restart() {
-    if (!currentConfig || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting) return;
+    if (!currentConfig || isMenuOpen() || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting) return;
     if (currentConfig.ticket) { startCurrent(true, { restart:true }); return; }
     start(currentRun.status === 'failed' ? localConfig() : {
       ...currentConfig, mechanics:{ ...mechanicFlags }, practice:MECHANICS.some(({ key }) => !mechanicFlags[key]),
@@ -228,24 +228,23 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     if (shared) renderSharedRecords(revision);
     else { emptyRecords.textContent = 'No finished expeditions yet.'; renderLocalRecords(); }
   }
-  function openRecords() {
-    recordsScope = social.connected ? 'shared' : 'local';
+  function openRecords(scope) {
+    recordsScope = scope === 'shared' || social.connected ? 'shared' : 'local';
     if (!recordsDialog.open) recordsDialog.showModal();
     renderRecords(); syncPause();
   }
-  async function connectProfile() {
+  async function connectProfile({ startAfterConnect = !isMenuOpen() && !recordsDialog.open } = {}) {
     if (connecting || starting) return;
     audio.unlock(); connecting = true; syncPause();
     try {
       await social.connect();
-      if (recordsDialog.open) recordsDialog.close();
-      await startCurrent(false);
-      onNotice(`Welcome, ${social.profile.name}. Your verified levels will appear in the shared ranking.`);
-    } catch (error) { onNotice(error.message); if (recordsDialog.open) { status.hidden = false; status.textContent = error.message; } }
+      if (startAfterConnect && !recordsDialog.open) await startCurrent(false);
+      if (social.connected) onNotice(`Welcome, ${social.profile.name}. Your verified levels will appear in the shared ranking.`);
+    } catch (error) { onError(error.message); if (recordsDialog.open) { status.hidden = false; status.textContent = error.message; } }
     finally { connecting = false; syncPause(); }
   }
-  connectButton.addEventListener('click', connectProfile);
-  sharedConnect.addEventListener('click', connectProfile);
+  connectButton.addEventListener('click', () => connectProfile());
+  sharedConnect.addEventListener('click', () => connectProfile());
   document.querySelector('#disconnect-profile').addEventListener('click', async () => {
     if (starting || connecting) return;
     connecting = true; syncPause();
@@ -448,5 +447,6 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     return job.promise;
   }
   return { startCurrent, restart, openRecords, openLab, openElder, syncPause, setSession, updateHUD, saveResult,
+    async connectAndStart() { if (social.connected) await startCurrent(); else await connectProfile({ startAfterConnect:true }); },
     get paused() { return isPaused(); } };
 }

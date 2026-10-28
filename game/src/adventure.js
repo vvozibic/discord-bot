@@ -21,6 +21,8 @@ import { createReplayUI, formatTime } from './replay-ui.js';
 import { createLevelDirector, describeLevel } from './level-director.js';
 import { createTouchJoystick } from './touch-joystick.js';
 import { createDiscordService } from './discord-service.js';
+import { createMainMenu } from './main-menu.js';
+import { createOrientationControl } from './orientation-control.js';
 import { createRunTrace } from './run-trace.js';
 import { ENEMIES as enemyDefinitions, updatePatrols } from './enemy-rules.js';
 import './adventure.css';
@@ -83,9 +85,12 @@ let heroArt = createHeroArt('wizard');
 let selectedCharacter = 'wizard';
 const actorOrder = [];
 const byDepth = (a, b) => a.y - b.y;
+let mainMenu;
 const ui = createReplayUI({
   audio, director:createLevelDirector(), social, requireProfile:true, getTrace:() => runTrace.snapshot(), onNotice:message => tell(message, 8000),
-  onStart:config => startExpedition(config),
+  onError:message => { mainMenu?.notice(message); tell(message, 8000); },
+  isMenuOpen:() => mainMenu?.open ?? true,
+  onStart:config => { mainMenu.hide(); startExpedition(config); },
   getChallenge:() => simulation?.challenge,
   getSimulation:() => simulation,
   onShield:useShield,
@@ -94,8 +99,21 @@ const ui = createReplayUI({
   onPauseChange(paused) {
     clearInput(); path = []; lastFrame = performance.now(); stepper.reset();
     audio.setActive(!paused && !document.hidden);
+    if (paused) {
+      if (frameRequest !== null) cancelAnimationFrame(frameRequest);
+      frameRequest = null; profiler.record(lastFrame, 0, 0, false);
+    } else if (player && !document.hidden && frameRequest === null) frameRequest = requestAnimationFrame(frame);
   },
 });
+mainMenu = createMainMenu({ social,
+  canResume:() => Boolean(player && !won && !lost && social.connected),
+  onPlay:async () => {
+    if (player && !won && !lost && social.connected) mainMenu.hide();
+    else await ui.connectAndStart();
+  },
+  onLeaderboard:() => ui.openRecords('shared'), onChange:() => ui.syncPause(),
+});
+createOrientationControl({ social, onNotice:message => tell(message, 8000) });
 createCharacterPicker({
   onChange(id) {
     selectedCharacter = id; heroArt = createHeroArt(id); canvas.dataset.character = id;
@@ -771,7 +789,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (frameRequest !== null) cancelAnimationFrame(frameRequest);
     frameRequest = null; profiler.record(lastFrame, 0, 0, false);
-  } else if (frameRequest === null && player) frameRequest = requestAnimationFrame(frame);
+  } else if (frameRequest === null && player && !ui.paused) frameRequest = requestAnimationFrame(frame);
 });
 canvas.addEventListener('pointerdown', event => {
   audio.unlock();
@@ -844,7 +862,7 @@ function frame(now) {
   const drawStart = performance.now(); draw(now / 1000);
   if (!startupPanel.hidden) startupPanel.hidden = true;
   profiler.record(now, drawStart - updateStart, performance.now() - drawStart, true);
-  frameRequest = requestAnimationFrame(frame);
+  if (!ui.paused) frameRequest = requestAnimationFrame(frame);
 }
 
 canvas.dataset.phase = 'loading';
@@ -869,12 +887,15 @@ if (window.parent === window) {
   lastFrame = performance.now();
   if (!connected) {
     canvas.dataset.phase = 'connection-error'; startupReloadOnly = true;
+    mainMenu.notice('Discord could not connect. Reload the Activity or reopen Forest Trail from Discord to try again.');
     tell('Discord could not connect. Reload the Activity or reopen Forest Trail from Discord to try again.', Infinity); return;
   }
-  try { await social.connect(); await ui.startCurrent(false); }
-  catch (error) { canvas.dataset.phase = 'connect-required'; tell(error.message, Infinity); }
+  mainMenu.setReady(true);
+  if (!social.configured) mainMenu.notice('Profile connections are not available. Please contact an administrator or reload the Activity.');
+  canvas.dataset.phase = 'menu';
 }).catch(error => {
   canvas.dataset.phase = 'asset-error'; startupReloadOnly = true;
+  mainMenu.notice('The game artwork could not load. Please reload the Activity.');
   tell('The coin artwork could not load. Please reload the Activity.', Infinity);
   console.error('Coin artwork:', error);
 });
