@@ -1,11 +1,12 @@
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 import { protectDiscordMessages } from './discord-message-guard.js';
-import { WORLD, PORTAL, BRIDGE, GUARDIAN, findPath } from './world.js';
+import { WORLD, PORTAL, BRIDGE, GUARDIAN, findPath, getCurrentTheme } from './world.js';
 import { createFrameProfiler } from './frame-profiler.js';
 import { createFixedStepper } from './timestep.js';
 import { rect, texture } from './pixel-utils.js';
 import { createSceneryArt } from './scenery-art.js';
 import { createHeroArt } from './hero-art.js';
+import { createHunterArt } from './hunter-art.js';
 import { createCharacterPicker } from './character-picker.js';
 import { getControlsHelp, onControlsChange } from './controls-help.js';
 import { createCollectibleArt, COLLECTIBLE_FRAME_COUNT, COLLECTIBLE_ANCHOR } from './collectible-art.js';
@@ -168,14 +169,7 @@ const lavaTexture = texture(64, 64, target => {
     if (crack === 0) rect(target, x + 4, y + 1, 2, 6, '#e95b2d');
   }
 });
-const hunterTexture = texture(32, 34, target => {
-  rect(target, 7, 28, 18, 3, '#29362c88');
-  rect(target, 4, 12, 24, 11, '#4b2942'); rect(target, 7, 8, 18, 18, '#885062');
-  rect(target, 9, 9, 14, 12, '#d1797c'); rect(target, 10, 13, 12, 6, '#2b2432');
-  rect(target, 11, 14, 10, 2, '#ffddb5'); rect(target, 0, 13, 6, 4, '#b67e85'); rect(target, 26, 13, 6, 4, '#b67e85');
-  rect(target, 11, 4, 10, 3, '#c87d8b'); rect(target, 14, 1, 4, 5, '#ffba96');
-  rect(target, 10, 25, 4, 3, '#edbf9b'); rect(target, 19, 25, 4, 3, '#edbf9b');
-});
+let hunterTexture;
 const enemyTextures = Object.fromEntries(Object.entries(enemyDefinitions).map(([type, definition]) => [type, texture(28, 34, target => {
   rect(target, 5, 28, 18, 3, '#354b3f88');
   rect(target, 10, 3, 8, 2, '#eed59688'); rect(target, 7, 5, 14, 3, '#d6a45999');
@@ -373,6 +367,8 @@ function startExpedition(config) {
   cosmeticTrail.clear(); rewardsUI?.resetResult();
   hunterLaughCue.reset();
   repathRequested = false;
+  const hunterArt = createHunterArt(getCurrentTheme());
+  hunterTexture = hunterArt.texture; canvas.dataset.hunterStyle = hunterArt.id;
   const scene = createSceneryArt(); ground = scene.ground;
   locationPortalTextures = scene.portalTextures;
   const keeperAnchor = scene.guardianAnchor ?? guardianAnchor, keeperTexture = scene.guardianTexture ?? guardianTexture;
