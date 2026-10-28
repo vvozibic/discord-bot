@@ -7,6 +7,51 @@ const SEGMENTS = 40;
 const RADIUS = 14;
 const HALF_THICKNESS = .16;
 
+// Approved outlined mark, drawn on its native grid rather than downsampling the app logo.
+const LIGHTNING = [
+  '....................',
+  '....................',
+  '..........##........',
+  '.........###........',
+  '........####........',
+  '.......##.##........',
+  '......##..##........',
+  '.....##...########..',
+  '....##....########..',
+  '...##.........##....',
+  '..########...##.....',
+  '..########..##......',
+  '........##.##.......',
+  '........####........',
+  '........###.........',
+  '........##..........',
+  '.......##...........',
+  '.......#............',
+  '....................',
+  '....................',
+];
+
+function paintFace(ctx) {
+  for (let y = 0; y < 28; y++) for (let x = 0; x < 28; x++) {
+    const dx = x + .5 - RADIUS, dy = y + .5 - RADIUS, radiusSquared = dx * dx + dy * dy;
+    if (radiusSquared > 196) continue;
+    let color = '#443820';
+    if (radiusSquared <= 169) {
+      const light = (-dx * .6 - dy * .8) / 13;
+      color = light > .65 ? '#f1d28b' : light > 0 ? '#dfb365' : '#bd8b45';
+      if (radiusSquared > 144 && dx < -2 && dy < -8) color = '#fff0bb';
+    }
+    if (radiusSquared <= 121) color = dy < 0 ? '#bd9a50' : '#816236';
+    if (radiusSquared <= 100) {
+      color = radiusSquared > 81 ? '#109c70' : dy < -2 ? '#22daa0' : dy > 4 ? '#13b57e' : '#19ce91';
+      const column = Math.floor(dx + 10), row = Math.floor(dy + 10);
+      if (LIGHTNING[row]?.[column] === '#') color = '#102d23';
+      else if (dy < -6 && dy > -8 && dx > -6 && dx < -2) color = '#8bf0bc';
+    }
+    ctx.fillStyle = color; ctx.fillRect(x, y, 1, 1);
+  }
+}
+
 // A thin cylinder, projected into the same pixel-art space as the forest.
 function rotate([x, y, z], angle) {
   const cosine = Math.cos(angle), sine = Math.sin(angle), pitch = .18;
@@ -48,53 +93,42 @@ export function projectCoin(angle) {
   return surfaces.sort((a, b) => a.depth - b.depth);
 }
 
-export function paintCoin(ctx, logo, angle) {
+export function paintCoin(ctx, face, angle) {
   for (const surface of projectCoin(angle)) {
     if (surface.kind === 'edge') {
       const light = Math.max(0, surface.normal[0] * -.45 + surface.normal[1] * .6 + surface.normal[2] * .65);
-      const brightness = (.55 + light * .5) * (surface.index % 2 ? 1 : .82);
+      const brightness = .7 + light * .4;
       polygon(ctx, surface.points);
-      ctx.fillStyle = `rgb(${Math.round(218 * brightness)},${Math.round(165 * brightness)},${Math.round(63 * brightness)})`;
+      ctx.fillStyle = `rgb(${Math.round(164 * brightness)},${Math.round(113 * brightness)},${Math.round(56 * brightness)})`;
       ctx.fill();
       continue;
     }
-    const { side, normal } = surface;
-    const gold = ctx.createLinearGradient(0, 5, 0, 35);
-    gold.addColorStop(0, '#fff0ae'); gold.addColorStop(.35, '#eac05d'); gold.addColorStop(1, '#a76d24');
-    polygon(ctx, surface.points); ctx.fillStyle = gold; ctx.fill();
-    ctx.strokeStyle = '#f8e8a4'; ctx.lineWidth = .8; ctx.stroke();
-    polygon(ctx, ring(angle, side, .88)); ctx.fillStyle = '#866023'; ctx.fill();
-
-    // Crop only the empty green margin; the original lightning artwork stays intact.
-    const radius = .77;
-    const origin = project([-side * radius, radius, side * HALF_THICKNESS], angle);
-    const right = project([side * radius, radius, side * HALF_THICKNESS], angle);
-    const bottom = project([-side * radius, -radius, side * HALF_THICKNESS], angle);
+    const { side } = surface;
+    // Both sides keep the emblem upright throughout the existing 3D rotation.
+    const origin = project([-side, 1, side * HALF_THICKNESS], angle);
+    const right = project([side, 1, side * HALF_THICKNESS], angle);
+    const bottom = project([-side, -1, side * HALF_THICKNESS], angle);
     ctx.save();
-    polygon(ctx, ring(angle, side, radius)); ctx.clip();
-    ctx.setTransform((right.x - origin.x) / logo.width, (right.y - origin.y) / logo.width,
-      (bottom.x - origin.x) / logo.height, (bottom.y - origin.y) / logo.height, origin.x, origin.y);
-    ctx.drawImage(logo, logo.width * .2, logo.height * .2, logo.width * .6, logo.height * .6, 0, 0, logo.width, logo.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.setTransform((right.x - origin.x) / face.width, (right.y - origin.y) / face.width,
+      (bottom.x - origin.x) / face.height, (bottom.y - origin.y) / face.height, origin.x, origin.y);
+    ctx.drawImage(face, 0, 0);
     ctx.restore();
-    polygon(ctx, ring(angle, side, radius)); ctx.fillStyle = `rgba(8,41,25,${.12 * (1 - normal[2])})`; ctx.fill();
-    ctx.strokeStyle = '#ffe39a'; ctx.lineWidth = .65; ctx.stroke();
   }
 }
 
 let artPromise;
 export function createCollectibleArt() {
-  return artPromise ??= (async () => {
-    const logo = new Image();
-    logo.src = new URL('assets/pulse-logo.png', document.baseURI).href;
-    await logo.decode();
+  return artPromise ??= Promise.resolve().then(() => {
+    const face = texture(28, 28, paintFace);
     const frames = Array.from({ length:COLLECTIBLE_FRAME_COUNT }, (_, frame) =>
-      texture(44, 44, ctx => paintCoin(ctx, logo, frame / COLLECTIBLE_FRAME_COUNT * TAU + .18)));
+      texture(44, 44, ctx => paintCoin(ctx, face, frame / COLLECTIBLE_FRAME_COUNT * TAU)));
     const shadow = texture(36, 12, ctx => {
       ctx.fillStyle = '#142f2860';
       ctx.beginPath(); ctx.ellipse(18, 7, 11, 3, 0, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#e9ce8055';
       ctx.beginPath(); ctx.ellipse(18, 6, 15, 4, 0, 0, TAU); ctx.stroke();
     });
-    return { frames, shadow, logo };
-  })();
+    return { frames, shadow };
+  });
 }

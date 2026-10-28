@@ -932,7 +932,7 @@ if (window.parent === window) {
   canvas.dataset.phase = 'discord-required';
 } else Promise.all([createCollectibleArt(), social.initialize(), connectDiscord()]).then(async ([art, , connected]) => {
   coinArt = art;
-  canvas.dataset.collectibleModel = 'logo-coin-3d';
+  canvas.dataset.collectibleModel = 'polished-hybrid-coin-3d';
   canvas.dataset.cachedCoinFrames = String(COLLECTIBLE_FRAME_COUNT);
   resizeView();
   const viewportObserver = new ResizeObserver(resizeView); viewportObserver.observe(canvas);
