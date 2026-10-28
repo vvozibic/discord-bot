@@ -1,0 +1,51 @@
+/* The pre-run chooser shares the game's palette while keeping its own layout. */
+.character-dialog { width: min(660px, calc(100vw - 24px - var(--safe-left) - var(--safe-right))); }
+.character-dialog .dialog-content { padding: 22px; }
+.character-dialog .dialog-intro { margin-bottom: 14px; font-size: 14px; line-height: 1.5; }
+.character-briefing { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #68816a; border-radius: 10px; background: #263f31; }
+.character-briefing h3 { margin: 0 0 6px; color: #eee4b8; font-size: 15px; line-height: 1.35; }
+.character-briefing p { margin: 0; color: #d1dfca; font-size: 13px; line-height: 1.5; }
+.character-briefing .character-recommendation { margin-top: 7px; color: #c5e8b3; font-size: 12px; font-weight: 650; }
+.character-dialog .character-options { margin: 0 0 14px; gap: 12px; align-items: stretch; }
+.character-dialog[data-selection-locked="true"] .character-options { grid-template-columns: 1fr; }
+.character-dialog .character-card { min-height: 44px; padding: 14px; gap: 8px; cursor: pointer; }
+.character-dialog .character-card canvas { flex-shrink: 0; width: 48px; height: 60px; }
+.character-dialog .character-card strong { font-size: 15px; line-height: 1.3; }
+.character-dialog .character-card small { min-height: 0; font-size: 12px; line-height: 1.5; color: #c5d7c8; }
+.character-dialog .character-card .character-detail { color: #e0ebd9; font-weight: 600; }
+.character-dialog .character-card .character-ability { flex: 1; }
+.character-recommended { color: #d8edbc; background: #3b5534; border: 1px solid #718b5f; border-radius: 6px; padding: 4px 6px; font-size: 10px; line-height: 1.3; font-weight: 650; }
+.character-dialog .character-card:disabled { cursor: default; opacity: 1; }
+.character-dialog[data-selection-locked="true"] .character-card[aria-pressed="false"] { opacity: .7; border-style: dashed; }
+.character-dialog[data-selection-locked="true"] .character-card[aria-pressed="true"] { border-color: #b6d6c5; box-shadow: inset 0 0 0 1px #b6d6c5; }
+.character-lock-note { margin: 0 0 14px; color: #c3d0bd; font-size: 12px; line-height: 1.5; }
+.character-actions { position: sticky; bottom: -22px; display: flex; flex-wrap: wrap; gap: 10px; margin: 0 -22px -22px; padding: 12px 22px 22px; border-top: 1px solid #526b53; background: #1d3329; }
+.character-dialog .character-actions button { flex: 1 1 140px; width: auto; min-height: 46px; padding: 11px 16px; }
+.character-dialog #confirm-character { color: #233b2d; border: 1px solid #d1e8ad; background: #d1e8ad; }
+.character-dialog #close-characters { width: auto; }
+@media (hover: hover) {
+  .character-dialog .character-card:not(:disabled):hover { background: #315242; border-color: #a8c9b0; }
+  .character-dialog #confirm-character:hover { background: #e0f4bf; }
+}
+@media (max-width: 380px) {
+  .character-dialog .dialog-content { padding: 16px; }
+  .character-dialog .character-options { grid-template-columns: 1fr; gap: 10px; }
+  .character-dialog .character-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 5px 10px; padding: 12px; text-align: left; }
+  .character-dialog .character-card canvas { grid-column: 1; grid-row: 1 / 4; width: 40px; height: 50px; align-self: start; }
+  .character-dialog .character-card :is(strong, small, .character-recommended, .character-badge) { grid-column: 2; }
+  .character-dialog .character-badge, .character-dialog .character-recommended { justify-self: start; }
+  .character-actions { bottom: -16px; margin: 0 -16px -16px; padding: 10px 16px 16px; gap: 8px; }
+  .character-dialog .character-actions button { flex-basis: 100px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .character-dialog .dialog-content { padding: 16px 20px; }
+  .character-dialog .dialog-eyebrow { font-size: 9px; }
+  .character-dialog h2 { margin: 5px 0; font-size: 23px; }
+  .character-dialog .dialog-intro { margin-bottom: 10px; font-size: 13px; }
+  .character-briefing { margin-bottom: 10px; padding: 9px 12px; }
+  .character-dialog .character-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 5px 9px; padding: 10px; text-align: left; }
+  .character-dialog .character-card canvas { grid-column: 1; grid-row: 1 / 4; width: 32px; height: 40px; align-self: start; }
+  .character-dialog .character-card :is(strong, small, .character-recommended, .character-badge) { grid-column: 2; }
+  .character-dialog .character-badge, .character-dialog .character-recommended { justify-self: start; }
+  .character-actions { bottom: -16px; margin: 0 -20px -16px; padding: 10px 20px 16px; }
+}

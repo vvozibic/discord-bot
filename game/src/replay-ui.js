@@ -5,6 +5,8 @@ import { discordAvatarUrl } from './discord-service.js';
 import { MECHANICS, DEFAULT_MECHANICS, mechanicsFor, exitStatus } from './challenge-rules.js';
 import { getHealth } from './health.js';
 import { magicStatus } from './magic-rules.js';
+import { empStatus, EMP_COOLDOWN, EMP_DURATION } from './robot-abilities.js';
+import { levelVariantFor } from './level-variants.js';
 import { getControlsHelp, onControlsChange } from './controls-help.js';
 
 const LAB_KEY = 'forest-trail-challenge-lab-v1';
@@ -20,7 +22,7 @@ export function formatTime(seconds) {
 }
 function setText(element, text) { if (element.textContent !== text) element.textContent = text; }
 
-export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic = () => {}, onPauseChange, onNotice = () => {}, onError = onNotice, onVerifiedResult = () => {}, isMenuOpen = () => false, isOverlayOpen = () => false, audio, director, social, getTrace, requireProfile = false, getChallenge = () => null, getSimulation = () => null }) {
+export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic = () => {}, onPauseChange, onNotice = () => {}, onError = onNotice, onVerifiedResult = () => {}, chooseCharacter = null, isMenuOpen = () => false, isOverlayOpen = () => false, audio, director, social, getTrace, requireProfile = false, getChallenge = () => null, getSimulation = () => null }) {
   const recordsDialog = document.querySelector('#records-dialog');
   const labDialog = document.querySelector('#challenge-lab');
   const elderDialog = document.querySelector('#elder-dialog');
@@ -58,6 +60,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     heat:document.querySelector('#run-heat'), dash:document.querySelector('#dash-button'), dashCharge:document.querySelector('#dash-charge'),
     magic:document.querySelector('#magic-button'), magicCharge:document.querySelector('#magic-charge'),
   };
+  const abilityIcon = hud.magic.querySelector('svg'), wizardIcon = abilityIcon.innerHTML;
   let currentRun = null, currentExpedition = null, currentConfig = null;
   let previousHealth = null, healthDamageTimer = null;
   let starting = false, connecting = false, pendingCompletion = null, mustRestartOnline = false;
@@ -76,7 +79,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     const recharge = currentRun?.dashUses !== undefined ? 'Recharge: 3.5s after the first dash, 5s after the second, 6.5s from the third onward.' : 'A 3.5-second recharge.';
     mechanicDetails.get('dash').textContent = `Short burst of speed through danger. ${recharge} ${help.dashAction}`;
     mechanicDetails.get('hunter').textContent = getSimulation()?.challenge.terrain?.hunter?.smart
-      ? 'Coin 3 wakes a hunter that predicts your route. Sidestep its amber dash line. Wizard magic interrupts its charge.'
+      ? `Coin ${getSimulation().challenge.terrain.hunter.wakeAt ?? 3} wakes a hunter that predicts your route. Sidestep its amber dash line. Wizard magic interrupts its charge.`
       : MECHANICS.find(mechanic => mechanic.key === 'hunter').description;
     hud.dash.title = help.dashAction;
     hud.magic.title = `${help.magicAction} to cast at the hunter.`;
@@ -149,7 +152,14 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     try {
       if (pendingCompletion && !pendingCompletion.done && !(await (pendingCompletion.promise ?? submitResult(pendingCompletion)))) return;
       if (social.connected) {
-        const planned = await social.startRun(restart || mustRestartOnline);
+        const replace = restart || mustRestartOnline;
+        let character;
+        if (chooseCharacter) {
+          const preview = await social.previewRun(replace);
+          character = await chooseCharacter(preview);
+          if (!character) return;
+        }
+        const planned = await social.startRun(replace,character);
         start({ ...planned.config, ticket:planned.ticket }, false);
       } else if (currentConfig?.ticket) throw new Error('Reconnect your profile, or disconnect it to continue locally.');
       else start(localConfig(), false);
@@ -300,7 +310,8 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     setText(hud.healthAnnouncement, '');
     pendingCompletion = null; mustRestartOnline = false; onlineResult.hidden = true; nextButton.disabled = false;
     hud.map.title = `${config.practice ? 'Custom practice · ' : ''}Level ${config.level} · ${expedition.layoutName} · ${config.challengeName}. ${describeLevel(config)}`;
-    hud.map.textContent = `${config.practice ? 'Practice' : `Level ${config.level}`} · ${expedition.layoutName}`;
+    const variant = levelVariantFor(config);
+    hud.map.textContent = `${config.practice ? 'Practice' : `Level ${config.level}`} · ${variant?.name ?? expedition.layoutName}${config.character ? ` · ${config.character === 'robot' ? 'Robot' : 'Wizard'}` : ''}`;
     hud.shield.hidden = !config.enemies.length;
     document.querySelector('.world-frame').classList.toggle('has-shield', config.enemies.length > 0);
     document.querySelector('.world-frame').classList.toggle('has-dash', Boolean(run.dashEnabled));
@@ -382,18 +393,31 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     const nextRecharge = getNextDashCooldown(currentRun);
     hud.dash.title = cooling ? `Dash recharging: ${currentRun.dashCooldown.toFixed(1)}s left` : `${help.dashAction} Recharge after use: ${nextRecharge}s.`;
     hud.dash.setAttribute('aria-label', dashing ? 'Dashing' : cooling ? `Dash recharging, ${currentRun.dashCooldown.toFixed(1)} seconds` : dashWaiting ? `Dash: ${dashWaitingLabel}` : `Dash ready. ${help.dashAction} Recharge after use: ${nextRecharge} seconds.`);
-    const simulation = getSimulation(), magic = simulation?.magic, spell = magicStatus(simulation);
-    const showMagic = magic?.character === 'wizard' && Boolean(challenge?.mechanics.hunter);
+    const simulation = getSimulation(), magic = simulation?.magic, robot = Boolean(simulation?.emp);
+    const spell = robot ? empStatus(simulation) : magicStatus(simulation);
+    const showMagic = robot || (magic?.character === 'wizard' && Boolean(challenge?.mechanics.hunter));
     hud.magic.hidden = !showMagic;
     document.querySelector('.world-frame').classList.toggle('has-magic',showMagic);
     document.querySelector('#magic-hint').hidden = !showMagic;
-    setText(hud.magicCharge,magic?.castRemaining > 0 ? 'Cast!' : spell.label);
-    hud.magic.classList.toggle('is-active',Boolean(magic?.castRemaining > 0));
-    hud.magic.dataset.state = magic?.castRemaining > 0 ? 'active' : spell.ready ? 'ready' : magic?.cooldown > 0 ? 'cooldown' : spell.label === 'Coin 3' || spell.label === 'Wizard only' ? 'locked' : 'waiting';
+    const active = robot ? simulation.emp.remaining > 0 : magic?.castRemaining > 0;
+    const cooldown = robot ? simulation.emp.cooldown : magic?.cooldown;
+    const ability = robot ? 'EMP' : 'Magic';
+    if (hud.magic.dataset.ability !== (robot ? 'emp' : 'magic')) {
+      abilityIcon.innerHTML = robot ? '<circle cx="12" cy="12" r="3"/><path d="M7 5a9 9 0 0 0 0 14M17 5a9 9 0 0 1 0 14M3 2a14 14 0 0 0 0 20M21 2a14 14 0 0 1 0 20"/>' : wizardIcon;
+    }
+    hud.magic.dataset.ability = robot ? 'emp' : 'magic';
+    setText(hud.magic.querySelector('.magic-label'),ability);
+    const hint = document.querySelector('#magic-hint');
+    if (hint.lastChild?.nodeType === 3) hint.lastChild.textContent = ` ${ability.toLowerCase()}`;
+    setText(hud.magicCharge,active ? robot ? `${simulation.emp.remaining.toFixed(1)}s` : 'Cast!' : spell.label);
+    hud.magic.classList.toggle('is-active',Boolean(active));
+    hud.magic.dataset.state = active ? 'active' : spell.ready ? 'ready' : cooldown > 0 ? 'cooldown' : /^Coin \d+$/.test(spell.label) || spell.label === 'Wizard only' ? 'locked' : 'waiting';
     hud.magic.disabled = !spell.ready;
     const attackCooldown = magic?.attackCooldown ?? 3;
-    hud.magic.title = `${help.magicAction} to cast at the hunter. ${attackCooldown}s cooldown.`;
-    hud.magic.setAttribute('aria-label',spell.ready ? `${help.magicAction} to cast at the hunter. ${attackCooldown} second cooldown.` : `Magic: ${spell.label}`);
+    const instruction = robot ? `${help.empAction} to disable nearby lasers and pulse traps for ${EMP_DURATION} seconds. ${EMP_COOLDOWN} second cooldown.`
+      : `${help.magicAction} to cast at the hunter. ${attackCooldown} second cooldown.`;
+    hud.magic.title = instruction;
+    hud.magic.setAttribute('aria-label',spell.ready ? `${ability} ready. ${instruction}` : `${ability}: ${spell.label}`);
   }
   function saveResult() {
     if (currentConfig.ticket) {

@@ -132,8 +132,27 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
         });
         send(response, 200, rewards); return;
       }
+      if (pathname === '/api/runs/preview' && request.method === 'GET') {
+        const params = new URL(request.url, 'http://localhost').searchParams;
+        if ([...params.keys()].some(key => key !== 'restart') || params.has('restart') && params.get('restart') !== '1') throw new ApiError(400, 'Invalid preview option.');
+        const restart = params.get('restart') === '1';
+        const answer = await store.transaction(session.board, session.profile.id, async tx => {
+          const profile = await tx.profile(), existing = await tx.activeAttempt();
+          if (existing && !restart && now() - existing.started_at < 3600000) return { config:JSON.parse(existing.config), resume:true };
+          const { director, flush } = directorFor(profile), config = director.current({ upgrade:true });
+          if (!director.available) throw new ApiError(503, 'Progress could not be saved. Please try again.');
+          // A restart preview must not invalidate an existing (possibly legacy)
+          // ticket if the player cancels. Its replacement is saved on start.
+          if (!existing) await flush(tx);
+          return { config, resume:false };
+        });
+        send(response, 200, answer); return;
+      }
       if (pathname === '/api/runs' && request.method === 'POST') {
         const input = await jsonBody(request);
+        if (Object.keys(input).some(key => !['restart','character'].includes(key))
+          || Object.hasOwn(input, 'restart') && typeof input.restart !== 'boolean'
+          || Object.hasOwn(input, 'character') && !['wizard','robot'].includes(input.character)) throw new ApiError(400, 'Choose the wizard or robot.');
         const answer = await store.transaction(session.board, session.profile.id, async tx => {
           const profile = await tx.profile();
           const existing = await tx.activeAttempt();
@@ -141,7 +160,7 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
             return { ticket:existing.id, config:JSON.parse(existing.config) };
           }
           if (existing) await tx.abandon(existing.id);
-          const { director, flush } = directorFor(profile), config = director.current({ upgrade:true }), ticket = randomUUID();
+          const { director, flush } = directorFor(profile), config = director.current({ upgrade:true, character:input.character ?? 'wizard' }), ticket = randomUUID();
           if (!director.available) throw new ApiError(503, 'Progress could not be saved. Please try again.');
           await flush(tx);
           await tx.createAttempt(ticket, config, now());

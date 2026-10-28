@@ -10,11 +10,12 @@ const BOLT_LIFETIME = .85;
 const STUN_DURATION = 1;
 
 export function createMagic(config = {}) {
-  return { character:'robot', cooldown:0, castRemaining:0, windup:0, castFacing:'down', projectile:null, impact:null, shots:0, hits:0,
+  return { character:config.rulesVersion >= 13 && config.character !== 'robot' ? 'wizard' : 'robot', cooldown:0, castRemaining:0, windup:0, castFacing:'down', projectile:null, impact:null, shots:0, hits:0,
     ...(config.rulesVersion >= 11 ? { attackCooldown:MAGIC_COOLDOWN } : {}) };
 }
 
 export function setMagicCharacter(simulation, character) {
+  if (simulation?.config?.rulesVersion >= 13) return false;
   if (!simulation?.magic || !['wizard','robot'].includes(character) || !['ready','running'].includes(simulation.run.status)) return false;
   simulation.magic.character = character;
   return true;
@@ -29,7 +30,7 @@ export function magicStatus(simulation) {
   if (!magic || magic.character !== 'wizard') return { ready:false, label:'Wizard only' };
   if (simulation.run.status !== 'running') return { ready:false, label:simulation.run.status === 'ready' ? 'Move first' : 'Finished' };
   if (magic.cooldown > 0) return { ready:false, label:`${magic.cooldown.toFixed(1)}s` };
-  if (!hunter || hunter.state === 'sleeping') return { ready:false, label:'Coin 3' };
+  if (!hunter || hunter.state === 'sleeping') return { ready:false, label:`Coin ${hunter?.wakeAt ?? 3}` };
   if (hunter.state === 'defeated') return { ready:false, label:'Defeated' };
   if (simulation.run.staggerRemaining > 0) return { ready:false, label:'Staggered' };
   const { player } = simulation, distance = Math.hypot(hunter.x - player.x, hunter.y - player.y);

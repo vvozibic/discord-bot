@@ -8,6 +8,7 @@ const touch = Object.freeze({
   dashAction:'Move and tap Dash.',
   shieldAction:'Tap Shield',
   magicAction:'Tap Magic',
+  empAction:'Tap EMP',
   talkAction:'Tap Talk to elder.',
   elderMarker:'ELDER · TAP TALK',
   groundAction:'Tap clear ground.',
@@ -21,11 +22,12 @@ const desktop = Object.freeze({
   dashAction:'Move and press Shift to dash.',
   shieldAction:'Press Space',
   magicAction:'Press F',
+  empAction:'Press F',
   talkAction:'Press E or click Talk to elder.',
   elderMarker:'TALK TO ELDER [E]',
   groundAction:'Click clear ground.',
   restartTitle:'Restart this level (R)',
-  footer:'Move with WASD or arrow keys. Space: shield. Shift: dash. F: magic. Click the ground to walk.',
+  footer:'Move with WASD or arrow keys. Space: shield. Shift: dash. F: character ability. Click the ground to walk.',
 });
 
 export function getControlsHelp() { return media?.matches ? touch : desktop; }

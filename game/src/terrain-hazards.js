@@ -1,5 +1,7 @@
 import { BRIDGE, SPAWN, PORTAL, PLAYER_SPEED, canStand, clearSegment, findPath, followPath } from './world.js';
 import { createHunterAI, sampleHunterPlayer, advanceSmartHunter } from './hunter-ai.js';
+import { levelVariantFor } from './level-variants.js';
+import { ROBOT_HEAT_MULTIPLIER } from './robot-abilities.js';
 
 const PLAYER_RADIUS = 5;
 const LEGACY_HEAT_RATE = 1 / 1.3;
@@ -47,21 +49,25 @@ function crumbleSites(expedition) {
 }
 
 /** Flags are already resolved by the caller, so legacy tickets cannot acquire new hazards. */
-export function createTerrain(expedition, { mechanics = {}, tier = 0, rulesVersion } = {}) {
-  const lava = mechanics.lava ? expedition.items.filter((_, index) => index % 2 === 0)
+export function createTerrain(expedition, { mechanics = {}, tier = 0, rulesVersion, character, variant:variantId } = {}) {
+  const variant = levelVariantFor({ rulesVersion, variant:variantId });
+  const lavaSites = expedition.items.filter((_, index) => index % 2 === 0);
+  const lava = mechanics.lava ? lavaSites.slice(0, variant?.id === 'pursuit' ? 1 : lavaSites.length)
     .map(point => ({ x:point.x, y:point.y, radius:28, ...(rulesVersion >= 8 ? { shape:'square' } : {}) })) : [];
   const hunterSource = mechanics.hunter ? [...expedition.bonuses].sort((a, b) =>
     Math.hypot(b.x - SPAWN.x, b.y - SPAWN.y) - Math.hypot(a.x - SPAWN.x, a.y - SPAWN.y))[0] : null;
   return {
     lava, heat:0,
-    ...(rulesVersion >= 6 && lava.length ? { heatRate:rulesVersion >= 7 ? HEAT_RATE : VERSION_SIX_HEAT_RATE } : {}),
-    crumbles:mechanics.crumble ? crumbleSites(expedition) : [],
-    lasers:mechanics.lasers ? [{ x1:BRIDGE.x - 8, x2:BRIDGE.x + BRIDGE.width + 8,
+    ...(rulesVersion >= 6 && lava.length ? { heatRate:(rulesVersion >= 7 ? HEAT_RATE : VERSION_SIX_HEAT_RATE)
+      * (rulesVersion >= 13 && character === 'robot' ? ROBOT_HEAT_MULTIPLIER : 1) } : {}),
+    crumbles:mechanics.crumble ? crumbleSites(expedition).slice(0, variant?.id === 'pursuit' ? 1 : 2) : [],
+    lasers:mechanics.lasers && variant?.id !== 'pursuit' ? [{ x1:BRIDGE.x - 8, x2:BRIDGE.x + BRIDGE.width + 8,
       y:BRIDGE.y + BRIDGE.height / 2, centerY:BRIDGE.y + BRIDGE.height / 2, state:'idle' }] : [],
     hunter:hunterSource ? { x:hunterSource.x, y:hunterSource.y, radius:14, state:'sleeping',
       ...(rulesVersion >= 9 ? { health:3,maxHealth:3,stunRemaining:0 } : {}),
       ...(rulesVersion >= 11 ? createHunterAI() : {}),
-      remaining:0, path:[], repathRemaining:0, speed:65 + 6 * tier } : null,
+      ...(variant?.id === 'machinery' ? { wakeAt:4 } : {}),
+      remaining:0, path:[], repathRemaining:0, speed:(65 + 6 * tier) * (variant?.id === 'machinery' ? .75 : 1) } : null,
   };
 }
 
@@ -87,7 +93,7 @@ function advanceHunter(hunter, run, player, dt) {
   if (!hunter || hunter.state === 'defeated') return;
   if (hunter.smart) sampleHunterPlayer(hunter,player,dt);
   if (hunter.state === 'sleeping') {
-    if (run.collected < 3) return;
+    if (run.collected < (hunter.wakeAt ?? 3)) return;
     hunter.state = 'warning';
     hunter.remaining = 1.5;
     return;
@@ -132,7 +138,7 @@ export function advanceTerrain(terrain, run, player, dt, clock) {
   for (const laser of terrain.lasers) {
     const phase = ((clock % LASER_PERIOD) + LASER_PERIOD) % LASER_PERIOD;
     laser.y = laser.centerY + Math.sin(clock * .8) * 32;
-    laser.state = phase < 3 ? 'idle' : phase < 4 ? 'warning' : 'active';
+    laser.state = laser.suppressedUntil !== undefined && clock < laser.suppressedUntil - 1e-9 ? 'idle' : phase < 3 ? 'idle' : phase < 4 ? 'warning' : 'active';
   }
   advanceHunter(terrain.hunter, run, player, dt);
 }

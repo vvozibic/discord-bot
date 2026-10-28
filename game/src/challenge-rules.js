@@ -1,6 +1,7 @@
 import { createTerrain, advanceTerrain, terrainHazard, resolveTerrainDamage } from './terrain-hazards.js';
+import { levelVariantFor } from './level-variants.js';
 
-export const CHALLENGE_RULES_VERSION = 12;
+export const CHALLENGE_RULES_VERSION = 13;
 
 export const MECHANICS = Object.freeze([
   Object.freeze({ key:'orderedCoins', name:'Numbered route', description:'Collect the six pulse coins in order. Plan your route around danger.' }),
@@ -21,7 +22,7 @@ export const DEFAULT_MECHANICS = Object.freeze(Object.fromEntries(MECHANICS.map(
 export function mechanicsFor(config = {}) {
   const version = config.rulesVersion;
   return Object.fromEntries(MECHANICS.map(({ key }, index) => [key,
-    ([3,4,5,6,7,8,9,10,11,CHALLENGE_RULES_VERSION].includes(version) || (version === 2 && index < 5)) && config.mechanics?.[key] !== false]));
+    ([3,4,5,6,7,8,9,10,11,12,CHALLENGE_RULES_VERSION].includes(version) || (version === 2 && index < 5)) && config.mechanics?.[key] !== false]));
 }
 
 function hash(value) {
@@ -32,13 +33,15 @@ function hash(value) {
 
 export function createChallenge(expedition, config = {}) {
   const mechanics = mechanicsFor(config), tier = Math.max(0, Math.min(5, config.tier ?? 0));
-  const traps = mechanics.pulseTraps ? expedition.items.filter((_, index) => index % 2 === 1).map((point, index) => ({
+  const variant = levelVariantFor(config);
+  const trapSites = expedition.items.filter((_, index) => index % 2 === 1);
+  const traps = mechanics.pulseTraps ? trapSites.slice(0, variant?.id === 'pursuit' ? 1 : trapSites.length).map((point, index) => ({
     x:point.x, y:point.y, radius:23 + tier,
     period:5.8 - tier * .18,
     phase:hash(`${expedition.seed}:pulse:${index}`) / 4294967296 * 4,
     warningDuration:1.15, activeDuration:1.15,
   })) : [];
-  return { mechanics, traps, terrain:createTerrain(expedition, { mechanics, tier, rulesVersion:config.rulesVersion }), clock:0, portalArmedAt:null };
+  return { mechanics, traps, terrain:createTerrain(expedition, { ...config, mechanics, tier }), clock:0, portalArmedAt:null };
 }
 
 export function advanceChallenge(challenge, run, dt, player) {
@@ -56,6 +59,7 @@ export function patrolClockRate(challenge, run) {
 }
 
 export function trapPhase(trap, clock) {
+  if (trap.suppressedUntil !== undefined && clock < trap.suppressedUntil - 1e-9) return 'idle';
   const phase = ((clock + trap.phase) % trap.period + trap.period) % trap.period;
   if (phase >= trap.period - trap.activeDuration) return 'active';
   if (phase >= trap.period - trap.activeDuration - trap.warningDuration) return 'warning';
