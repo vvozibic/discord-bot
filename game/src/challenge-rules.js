@@ -1,6 +1,6 @@
 import { createTerrain, advanceTerrain, terrainHazard, resolveTerrainDamage } from './terrain-hazards.js';
 
-export const CHALLENGE_RULES_VERSION = 11;
+export const CHALLENGE_RULES_VERSION = 12;
 
 export const MECHANICS = Object.freeze([
   Object.freeze({ key:'orderedCoins', name:'Numbered route', description:'Collect the six pulse coins in order. Plan your route around danger.' }),
@@ -21,7 +21,7 @@ export const DEFAULT_MECHANICS = Object.freeze(Object.fromEntries(MECHANICS.map(
 export function mechanicsFor(config = {}) {
   const version = config.rulesVersion;
   return Object.fromEntries(MECHANICS.map(({ key }, index) => [key,
-    ([3,4,5,6,7,8,9,10,CHALLENGE_RULES_VERSION].includes(version) || (version === 2 && index < 5)) && config.mechanics?.[key] !== false]));
+    ([3,4,5,6,7,8,9,10,11,CHALLENGE_RULES_VERSION].includes(version) || (version === 2 && index < 5)) && config.mechanics?.[key] !== false]));
 }
 
 function hash(value) {

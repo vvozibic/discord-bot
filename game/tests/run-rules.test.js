@@ -117,6 +117,44 @@ test('a successful Storm run receives its completion and whole-second speed bonu
   assert.equal(activateShield(run), false);
 });
 
+test('version-twelve retry assistance preserves scores and allows a late finish without a speed bonus', () => {
+  function finish(timeLimit, elapsed) {
+    const run = running('storm', { rulesVersion:12, timeLimit, scoreTimeLimit:70, itemCount:2 });
+    collectCore(run); collectCore(run); collectBonus(run);
+    advanceRun(run, elapsed);
+    assert.equal(finishRun(run), true);
+    return run;
+  }
+  const first = finish(70, 30.2), retry = finish(80, 30.2);
+  assert.equal(first.score, 200 + 200 + 300 + 39 * 5);
+  assert.equal(retry.score, first.score, 'the same performance must not earn extra points after a failure');
+  assert.equal(retry.timeLimit, 80);
+  assert.equal(retry.scoreTimeLimit, 70);
+  assert.equal(finish(80, 75).score, 700, 'assisted finishes keep pickup/completion points, with no negative bonus');
+  const expired = running('storm', { rulesVersion:12, timeLimit:80, scoreTimeLimit:70, itemCount:1 });
+  collectCore(expired); advanceRun(expired, 80);
+  assert.equal(expired.status, 'failed'); assert.equal(finishRun(expired), false);
+});
+
+test('legacy timed runs retain their original score even if a new scoring field is supplied', () => {
+  for (const rulesVersion of [undefined,1,2,3,4,5,6,7,8,9,10,11]) {
+    const run = running('storm', { rulesVersion, timeLimit:80, scoreTimeLimit:70, itemCount:1 });
+    collectCore(run); advanceRun(run, 30);
+    assert.equal(finishRun(run), true);
+    assert.equal(run.score, 100 + 300 + 50 * 5);
+    assert.equal(Object.hasOwn(run, 'scoreTimeLimit'), false, 'old replay results retain their shape');
+  }
+});
+
+test('new scoring deadlines default to the run limit and reject invalid assistance configurations', () => {
+  assert.equal(createRun({ mode:'storm', rulesVersion:12 }).scoreTimeLimit, 90);
+  assert.equal(createRun({ rulesVersion:12 }).scoreTimeLimit, null);
+  for (const scoreTimeLimit of [null, NaN, Infinity, -1, 0, 29, 81, '70']) {
+    assert.throws(() => createRun({ mode:'storm', rulesVersion:12, timeLimit:80, scoreTimeLimit }), /Invalid scoring deadline/);
+  }
+  assert.throws(() => createRun({ rulesVersion:12, scoreTimeLimit:70 }), /Invalid scoring deadline/);
+});
+
 test('invalid deltas do not corrupt a run, and invalid run configurations are rejected', () => {
   const run = running();
   for (const dt of [NaN, Infinity, -1, 0, '5', null, undefined]) advanceRun(run, dt);

@@ -20,7 +20,7 @@ export function formatTime(seconds) {
 }
 function setText(element, text) { if (element.textContent !== text) element.textContent = text; }
 
-export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic = () => {}, onPauseChange, onNotice = () => {}, onError = onNotice, isMenuOpen = () => false, audio, director, social, getTrace, requireProfile = false, getChallenge = () => null, getSimulation = () => null }) {
+export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic = () => {}, onPauseChange, onNotice = () => {}, onError = onNotice, onVerifiedResult = () => {}, isMenuOpen = () => false, isOverlayOpen = () => false, audio, director, social, getTrace, requireProfile = false, getChallenge = () => null, getSimulation = () => null }) {
   const recordsDialog = document.querySelector('#records-dialog');
   const labDialog = document.querySelector('#challenge-lab');
   const elderDialog = document.querySelector('#elder-dialog');
@@ -127,7 +127,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
   }
   social.subscribe(() => { updateProfile(); syncPause(); if (recordsDialog.open && recordsScope === 'shared') renderRecords(); });
 
-  function isPaused() { return isMenuOpen() || (requireProfile && !social.connected) || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting; }
+  function isPaused() { return isMenuOpen() || isOverlayOpen() || (requireProfile && !social.connected) || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting; }
   function syncPause() { onPauseChange(isPaused()); }
   function openElder() {
     if (starting || connecting || recordsDialog.open || labDialog.open) return;
@@ -156,8 +156,8 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     } catch (error) { onError(error.message); }
     finally { starting = false; syncPause(); }
   }
-  function restart() {
-    if (!currentConfig || isMenuOpen() || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting) return;
+  function restart({ fromMenu = false } = {}) {
+    if (!currentConfig || (isMenuOpen() && !fromMenu) || isOverlayOpen() || recordsDialog.open || labDialog.open || elderDialog.open || characterDialog.open || starting || connecting) return;
     if (currentConfig.ticket) { startCurrent(true, { restart:true }); return; }
     start(currentRun.status === 'failed' ? localConfig() : {
       ...currentConfig, mechanics:{ ...mechanicFlags }, practice:MECHANICS.some(({ key }) => !mechanicFlags[key]),
@@ -209,6 +209,10 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
         const avatar = discordAvatarUrl(record.avatar); if (avatar) { image.src = avatar; image.onerror = () => { image.hidden = true; }; info.append(image); }
         const labels = document.createElement('div'), name = document.createElement('strong'), detail = document.createElement('small');
         name.textContent = `${record.name}${record.userId === social.profile?.id ? ' · You' : ''}`;
+        if (record.badge === 'hunter') {
+          const badge = document.createElement('span'); badge.className = 'ranking-badge'; badge.textContent = '◇';
+          badge.setAttribute('aria-label','Hunter slayer badge'); badge.title = 'Hunter slayer'; name.append(badge);
+        }
         detail.textContent = `Level ${record.level} · ${record.layout}`; labels.append(name, detail); info.append(labels);
         const value = document.createElement('div'); value.className = 'record-value';
         const score = document.createElement('strong'), time = document.createElement('small');
@@ -279,7 +283,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     labDialog.close();
     startCurrent();
   });
-  document.querySelector('#reset').addEventListener('click', restart);
+  document.querySelector('#reset').addEventListener('click', () => restart({ fromMenu:true }));
   document.querySelector('#play-again').addEventListener('click', startCurrent);
   document.querySelector('#records-button').addEventListener('click', openRecords);
   document.querySelector('#close-records').addEventListener('click', () => recordsDialog.close());
@@ -345,7 +349,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     setText(hud.bonus, `Bonus ${currentRun.bonuses} / 2`);
     updateHealth();
     const challenge = getChallenge();
-    hud.heat.hidden = !challenge?.mechanics?.lava;
+    hud.heat.hidden = !challenge?.mechanics?.lava || (challenge?.terrain?.heat ?? 0) <= .05;
     if (!hud.heat.hidden) {
       const heat = Math.round(Math.max(0, Math.min(1, challenge.terrain?.heat ?? 0)) * 100);
       setText(hud.heat, `Heat ${heat}%`);
@@ -359,7 +363,8 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
       hud.exit.classList.toggle('is-open', exit.open);
     }
     const shieldLocked = currentRun.shieldRequiresElder && !currentRun.elderGiftClaimed;
-    setText(hud.shieldCharge, currentRun.shieldRemaining > 0 ? `${currentRun.shieldRemaining.toFixed(1)}s` : shieldLocked ? 'Locked' : String(currentRun.shieldCharges));
+    setText(hud.shieldCharge, currentRun.shieldRemaining > 0 ? `${currentRun.shieldRemaining.toFixed(1)}s` : shieldLocked ? 'Ask elder' : !currentRun.shieldCharges ? 'Used' : currentRun.status === 'ready' ? 'Move first' : currentRun.status !== 'running' ? 'Finished' : 'Ready');
+    hud.shield.dataset.state = currentRun.shieldRemaining > 0 ? 'active' : shieldLocked || !currentRun.shieldCharges ? 'locked' : currentRun.status !== 'running' ? 'waiting' : 'ready';
     hud.shield.classList.toggle('is-active', currentRun.shieldRemaining > 0);
     hud.shield.classList.toggle('is-locked', Boolean(shieldLocked));
     hud.shield.disabled = currentRun.status !== 'running' || currentRun.shieldCharges < 1 || currentRun.shieldRemaining > 0;
@@ -368,12 +373,15 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     const help = getControlsHelp();
     hud.shield.title = currentRun.shieldCharges ? `${help.shieldAction} to activate the shield.` : shieldLabel;
     const dashing = (currentRun.dashRemaining ?? 0) > 0, cooling = (currentRun.dashCooldown ?? 0) > 0;
-    setText(hud.dashCharge, dashing ? 'Go!' : cooling ? `${currentRun.dashCooldown.toFixed(1)}s` : 'Ready');
+    const dashWaiting = currentRun.status !== 'running' || (currentRun.staggerRemaining ?? 0) > 0;
+    const dashWaitingLabel = currentRun.status === 'ready' ? 'Move first' : currentRun.status !== 'running' ? 'Finished' : 'Staggered';
+    setText(hud.dashCharge, dashing ? 'Go!' : cooling ? `${currentRun.dashCooldown.toFixed(1)}s` : !currentRun.dashEnabled ? 'Locked' : dashWaiting ? dashWaitingLabel : 'Ready');
+    hud.dash.dataset.state = dashing ? 'active' : !currentRun.dashEnabled ? 'locked' : cooling ? 'cooldown' : dashWaiting ? 'waiting' : 'ready';
     hud.dash.classList.toggle('is-active', dashing);
-    hud.dash.disabled = currentRun.status !== 'running' || !currentRun.dashEnabled || dashing || cooling;
+    hud.dash.disabled = dashWaiting || !currentRun.dashEnabled || dashing || cooling;
     const nextRecharge = getNextDashCooldown(currentRun);
     hud.dash.title = cooling ? `Dash recharging: ${currentRun.dashCooldown.toFixed(1)}s left` : `${help.dashAction} Recharge after use: ${nextRecharge}s.`;
-    hud.dash.setAttribute('aria-label', dashing ? 'Dashing' : cooling ? `Dash recharging, ${currentRun.dashCooldown.toFixed(1)} seconds` : `Dash ready. ${help.dashAction} Recharge after use: ${nextRecharge} seconds.`);
+    hud.dash.setAttribute('aria-label', dashing ? 'Dashing' : cooling ? `Dash recharging, ${currentRun.dashCooldown.toFixed(1)} seconds` : dashWaiting ? `Dash: ${dashWaitingLabel}` : `Dash ready. ${help.dashAction} Recharge after use: ${nextRecharge} seconds.`);
     const simulation = getSimulation(), magic = simulation?.magic, spell = magicStatus(simulation);
     const showMagic = magic?.character === 'wizard' && Boolean(challenge?.mechanics.hunter);
     hud.magic.hidden = !showMagic;
@@ -381,6 +389,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     document.querySelector('#magic-hint').hidden = !showMagic;
     setText(hud.magicCharge,magic?.castRemaining > 0 ? 'Cast!' : spell.label);
     hud.magic.classList.toggle('is-active',Boolean(magic?.castRemaining > 0));
+    hud.magic.dataset.state = magic?.castRemaining > 0 ? 'active' : spell.ready ? 'ready' : magic?.cooldown > 0 ? 'cooldown' : spell.label === 'Coin 3' || spell.label === 'Wizard only' ? 'locked' : 'waiting';
     hud.magic.disabled = !spell.ready;
     const attackCooldown = magic?.attackCooldown ?? 3;
     hud.magic.title = `${help.magicAction} to cast at the hunter. ${attackCooldown}s cooldown.`;
@@ -434,6 +443,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
         document.querySelector('#result-score').textContent = `${result.score} pts`;
         document.querySelector('#finish-time').textContent = formatTime(result.elapsed);
         nextButton.textContent = result.status === 'won' ? 'Next level' : 'Try again';
+        onVerifiedResult(result,job.ticket);
       }
       return true;
     }).catch(error => {

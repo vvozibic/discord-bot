@@ -1,9 +1,11 @@
 import { Pool } from 'pg';
+import { normalizeRewards } from '../src/rewards.js';
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS forest_profiles (
     board TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, avatar TEXT NOT NULL,
-    progress TEXT, PRIMARY KEY(board,user_id));
+    progress TEXT, rewards TEXT, PRIMARY KEY(board,user_id));
+  ALTER TABLE forest_profiles ADD COLUMN IF NOT EXISTS rewards TEXT;
   CREATE TABLE IF NOT EXISTS forest_attempts (
     id TEXT PRIMARY KEY, board TEXT NOT NULL, user_id TEXT NOT NULL, config TEXT NOT NULL,
     started_at BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'ready', result TEXT);
@@ -20,11 +22,11 @@ async function ranking(query, board, userId) {
     SELECT s.*, ROW_NUMBER() OVER (PARTITION BY s.user_id ORDER BY s.level DESC,s.score DESC,s.elapsed,s.created_at,s.attempt_id) AS choice
     FROM forest_scores s WHERE s.board=$1
   ), ranked AS (
-    SELECT b.user_id AS "userId",p.name,p.avatar,b.level,b.tier,b.score,b.elapsed,b.layout,
+    SELECT b.user_id AS "userId",p.name,p.avatar,p.rewards,b.level,b.tier,b.score,b.elapsed,b.layout,
       ROW_NUMBER() OVER (ORDER BY b.level DESC,b.score DESC,b.elapsed,b.created_at,b.user_id) AS rank
     FROM best b JOIN forest_profiles p ON p.board=b.board AND p.user_id=b.user_id WHERE b.choice=1
   ) SELECT * FROM ranked WHERE rank<=25 OR "userId"=$2 ORDER BY rank`, [board, userId]);
-  const normalized = rows.map(row => ({ ...row, rank:Number(row.rank) }));
+  const normalized = rows.map(({ rewards, ...row }) => ({ ...row, rank:Number(row.rank), badge:normalizeRewards(rewards).equipped.badge }));
   const total = await query('SELECT COUNT(DISTINCT user_id) AS total FROM forest_scores WHERE board=$1', [board]);
   return { rows:normalized.filter(row => row.rank <= 25), you:normalized.find(row => row.userId === userId) ?? null,
     total:Number(total.rows[0].total) };
@@ -66,13 +68,14 @@ export async function openPostgresGameStore(databaseUrl, { PoolClass = Pool } = 
       try {
         await q('BEGIN');
         await q("SET LOCAL lock_timeout='5s'");
-        const profile = (await q('SELECT progress FROM forest_profiles WHERE board=$1 AND user_id=$2 FOR UPDATE', [board, userId])).rows[0];
+        const profile = (await q('SELECT progress,rewards FROM forest_profiles WHERE board=$1 AND user_id=$2 FOR UPDATE', [board, userId])).rows[0];
         const tx = {
           profile:() => profile,
           activeAttempt:async () => (await q("SELECT * FROM forest_attempts WHERE board=$1 AND user_id=$2 AND status='ready' ORDER BY started_at DESC LIMIT 1", [board, userId])).rows[0],
           attempt:async id => (await q('SELECT * FROM forest_attempts WHERE id=$1 AND board=$2 AND user_id=$3', [id, board, userId])).rows[0],
           abandon:id => q("UPDATE forest_attempts SET status='abandoned' WHERE id=$1 AND board=$2 AND user_id=$3", [id, board, userId]),
           saveProgress:value => q('UPDATE forest_profiles SET progress=$1 WHERE board=$2 AND user_id=$3', [value, board, userId]),
+          saveRewards:value => q('UPDATE forest_profiles SET rewards=$1 WHERE board=$2 AND user_id=$3', [JSON.stringify(value), board, userId]),
           createAttempt:(id, config, startedAt) => q('INSERT INTO forest_attempts(id,board,user_id,config,started_at) VALUES($1,$2,$3,$4,$5)', [id, board, userId, JSON.stringify(config), Math.trunc(startedAt)]),
           addScore:(attempt, config, result, createdAt) => q('INSERT INTO forest_scores(attempt_id,board,user_id,level,tier,score,elapsed,layout,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
             [attempt.id, board, userId, config.level, config.tier, result.score, result.elapsed, result.layoutName, Math.trunc(createdAt)]),

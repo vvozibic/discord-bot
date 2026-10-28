@@ -1,6 +1,7 @@
 import { rect, texture } from './pixel-utils.js';
 import { paintRobot } from './robot-art.js';
 import { paintWizard, WIZARD_CAST_POSES } from './wizard-art.js';
+import { moonlightFrame } from './cosmetic-art.js';
 
 export const HERO_CHARACTERS = Object.freeze([
   Object.freeze({ id:'wizard', name:'Blue wizard', detail:'Crystal staff. Magic fights the hunter.' }),
@@ -103,8 +104,19 @@ const cachedArt = new Map();
 let keeperArt;
 
 // Atlas creation is lazy and memoized; no drawing or allocation occurs in the game loop.
-export function createHeroArt(character = 'robot') {
+export function createHeroArt(character = 'robot', palette = 'classic') {
   const id = HERO_CHARACTERS.some(hero => hero.id === character) ? character : 'robot';
+  if (palette === 'moonlight') {
+    const key = `${id}:moonlight`;
+    if (!cachedArt.has(key)) {
+      const original = createHeroArt(id);
+      const recolor = frames => Object.fromEntries(Object.entries(frames).map(([direction, value]) =>
+        [direction, Array.isArray(value) ? value.map(moonlightFrame) : moonlightFrame(value)]));
+      cachedArt.set(key, { ...original, idleFrames:recolor(original.idleFrames), walkFrames:recolor(original.walkFrames),
+        ...(original.castFrames ? { castFrames:recolor(original.castFrames) } : {}) });
+    }
+    return cachedArt.get(key);
+  }
   if (cachedArt.has(id)) return cachedArt.get(id);
   const paint = id === 'wizard' ? paintWizard : paintRobot;
   const directions = ['up', 'down', 'left', 'right'];

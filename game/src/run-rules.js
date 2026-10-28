@@ -40,6 +40,9 @@ export function createRun(config = {}) {
   if (!definition) throw new RangeError(`Unknown run mode: ${mode}`);
   const deadline = timeLimit === undefined ? definition.timeLimit : timeLimit;
   if (deadline !== null && (!Number.isFinite(deadline) || deadline < 30 || deadline > 600)) throw new RangeError('Invalid run deadline');
+  const scoreDeadline = config.scoreTimeLimit === undefined ? deadline : config.scoreTimeLimit;
+  if (config.rulesVersion >= 12 && (deadline === null ? scoreDeadline !== null
+    : !Number.isFinite(scoreDeadline) || scoreDeadline < 30 || scoreDeadline > deadline)) throw new RangeError('Invalid scoring deadline');
   const mechanics = mechanicsFor(config);
   const maxHits = mechanics.armor ? count(config.maxHits ?? 4, 1, 'maxHits') : null;
   return {
@@ -65,6 +68,7 @@ export function createRun(config = {}) {
     dashCooldown:0,
     hitCooldown: 0,
     timeLimit: deadline,
+    ...(config.rulesVersion >= 12 ? { scoreTimeLimit:scoreDeadline } : {}),
   };
 }
 
@@ -175,7 +179,7 @@ export function finishRun(run) {
   run.shieldRemaining = 0;
   run.dashRemaining = 0;
   run.score += COMPLETION_POINTS;
-  if (run.mode === 'storm' && run.timeLimit !== null) run.score += Math.floor(Math.max(0, run.timeLimit - run.elapsed)) * 5;
+  if (run.mode === 'storm' && run.timeLimit !== null) run.score += Math.floor(Math.max(0, (run.scoreTimeLimit ?? run.timeLimit) - run.elapsed)) * 5;
   return true;
 }
 

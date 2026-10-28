@@ -1,18 +1,26 @@
 import { WORLD, SPAWN, POND, BRIDGE, PATHS, HUT, TREES, LOGS, ROCKS } from './world.js';
 import { rect, hash, texture } from './pixel-utils.js';
 
+const onLane = (x, y, margin = 0) => PATHS.some(([px, py, w, h]) =>
+  x >= px - margin && x < px + w + margin && y >= py - margin && y < py + h + margin);
+
 function floor(ctx) {
-  rect(ctx, 0, 0, WORLD.width, WORLD.height, '#303944');
+  rect(ctx, 0, 0, WORLD.width, WORLD.height, '#263541');
   for (let y = 0; y < WORLD.height; y += 32) for (let x = 0; x < WORLD.width; x += 32) {
     const seed = hash(x, y);
-    rect(ctx, x + 1, y + 1, 31, 31, seed > .66 ? '#424d59' : seed < .3 ? '#39444f' : '#3d4854');
-    rect(ctx, x + 2, y + 2, 29, 1, '#515a64');
-    if (seed > .75) { rect(ctx, x + 8, y + 17, 9, 1, '#6c5345'); rect(ctx, x + 15, y + 18, 5, 2, '#59493e'); }
-    if (seed < .16) { rect(ctx, x + 12, y + 5, 1, 9, '#242f3b'); rect(ctx, x + 13, y + 12, 4, 1, '#242f3b'); }
-    rect(ctx, x + 4, y + 4, 1, 1, '#65717a'); rect(ctx, x + 27, y + 27, 1, 1, '#65717a');
+    rect(ctx, x + 1, y + 1, 31, 31, seed > .66 ? '#3e515f' : seed < .3 ? '#344653' : '#394b59');
+    rect(ctx, x + 2, y + 2, 29, 1, '#526875');
+    rect(ctx, x + 2, y + 3, 1, 27, '#435966');
+    if (seed > .75) { rect(ctx, x + 8, y + 17, 9, 1, '#785e4a'); rect(ctx, x + 15, y + 18, 5, 2, '#615044'); }
+    if (seed < .16) { rect(ctx, x + 12, y + 5, 1, 9, '#283b48'); rect(ctx, x + 13, y + 12, 4, 1, '#283b48'); }
+    if (seed > .42 && seed < .61) {
+      rect(ctx, x + 8, y + 12, 14, 1, '#60748145'); rect(ctx, x + 12, y + 14, 10, 1, '#60748130');
+    }
+    rect(ctx, x + 4, y + 4, 1, 1, '#6c7e87'); rect(ctx, x + 27, y + 27, 1, 1, '#6c7e87');
   }
   for (const [x, y, w, h] of PATHS) {
-    rect(ctx, x - 1, y - 1, w + 2, h + 2, '#68717b'); rect(ctx, x, y, w, h, '#535d68');
+    rect(ctx, x - 1, y - 1, w + 2, h + 2, '#839197'); rect(ctx, x, y, w, h, '#586b77');
+    rect(ctx, x, y, w, 1, '#a3b0b1'); rect(ctx, x, y + h - 1, w, 1, '#394c59');
     if (w > h) for (let px = x + 5; px < x + w - 7; px += 20) {
       rect(ctx, px, y + 3, 10, 2, '#c9a15c'); rect(ctx, px, y + h - 5, 10, 2, '#b88c4e');
     }
@@ -31,6 +39,25 @@ function floor(ctx) {
   for (const dx of [-14, 12]) { rect(ctx, SPAWN.x + dx, SPAWN.y - 14, 2, 8, '#8fc8bd'); rect(ctx, SPAWN.x + dx, SPAWN.y + 7, 2, 8, '#8fc8bd'); }
   ctx.font = '8px monospace'; ctx.fillStyle = '#a0a2a1'; ctx.fillText('LOADING BAY', 72, 460);
   ctx.fillStyle = '#bd9a65'; ctx.fillText('SECTOR 02', 576, 454);
+}
+
+function serviceWear(ctx) {
+  // Static floor wear and soft cast shadows; no extra scene objects or glow passes.
+  for (const { x, y } of TREES) {
+    rect(ctx, x - 9, y + 10, 37, 7, '#0d223027');
+    rect(ctx, x + 1, y + 17, 29, 3, '#0d223017');
+    const seed = hash(x + 19, y + 23);
+    if (seed > .48 && !onLane(x + 12, y + 15, 5)) {
+      rect(ctx, x + 8, y + 15, 9, 2, '#7d604a');
+      rect(ctx, x + 12, y + 17, 7, 1, '#6c5949');
+      rect(ctx, x + 6, y + 16, 3, 1, '#947451');
+    }
+  }
+  rect(ctx, HUT.x + 8, HUT.y + HUT.height, HUT.width + 4, 6, '#0c243038');
+  rect(ctx, HUT.x + 16, HUT.y + HUT.height + 6, HUT.width - 7, 4, '#0c24301a');
+  // A cool reflection around the tank stays subdued and distinct from live hazards.
+  rect(ctx, POND.x + 13, POND.y + POND.height + 11, POND.width - 26, 2, '#8dbcc51a');
+  rect(ctx, POND.x + 22, POND.y + POND.height + 13, POND.width - 44, 2, '#8dbcc50c');
 }
 
 function coolant(ctx) {
@@ -76,7 +103,7 @@ function debris(ctx) {
 
 function machine(ctx, variant) {
   const x = 26, y = 52;
-  rect(ctx, x - 13, y + 8, 28, 8, '#25323d');
+  rect(ctx, x - 13, y + 8, 28, 8, '#10283748');
   rect(ctx, x - 7, y + 5, 14, 10, '#1c2a36'); rect(ctx, x - 6, y + 5, 12, 3, '#b09b72');
   if (variant === 0) {
     rect(ctx, x - 8, y - 40, 16, 45, '#273541'); rect(ctx, x - 6, y - 39, 12, 44, '#73818b');
@@ -102,7 +129,7 @@ function machine(ctx, variant) {
 
 function controlRoom(ctx) {
   const x = 12, y = 24, w = HUT.width, h = HUT.height;
-  rect(ctx, x - 5, y + h - 2, w + 12, 8, '#22303b');
+  rect(ctx, x - 5, y + h - 2, w + 12, 8, '#0d263548');
   rect(ctx, x, y + 10, w, h - 10, '#2d3e4d'); rect(ctx, x + 4, y + 13, w - 8, h - 17, '#657785');
   for (let py = y + 19; py < y + h - 4; py += 12) rect(ctx, x + 5, py, w - 10, 1, '#405768');
   rect(ctx, x - 6, y + 3, w + 12, 12, '#334959'); rect(ctx, x - 7, y, w + 14, 5, '#a1a89c');
@@ -127,7 +154,7 @@ function controlRoom(ctx) {
 
 function barrier(log) {
   return texture(log.width + 8, log.height + 10, ctx => {
-    rect(ctx, 1, 10, log.width + 6, 7, '#26313d');
+    rect(ctx, 1, 10, log.width + 6, 7, '#10283748');
     rect(ctx, 3, 3, log.width, log.height, '#334450'); rect(ctx, 4, 3, log.width - 2, 3, '#8d999b');
     rect(ctx, 5, 8, log.width - 4, 5, '#d2ab5d');
     for (let x = 7; x < log.width; x += 12) rect(ctx, x, 8, 5, 5, '#343d43');
@@ -162,7 +189,7 @@ function portal(ctx, active) {
 }
 
 export function createIndustrialArt() {
-  const ground = texture(WORLD.width, WORLD.height, ctx => { floor(ctx); coolant(ctx); debris(ctx); });
+  const ground = texture(WORLD.width, WORLD.height, ctx => { floor(ctx); serviceWear(ctx); coolant(ctx); debris(ctx); });
   const machines = Array.from({ length:3 }, (_, index) => texture(52, 72, ctx => machine(ctx, index)));
   const room = texture(HUT.width + 24, HUT.height + 48, controlRoom);
   const scenery = [

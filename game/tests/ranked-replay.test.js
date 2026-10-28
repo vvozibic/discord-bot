@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRunTrace, MAX_TRACE_TICKS } from '../src/run-trace.js';
 import { replayRun } from '../server/replay.js';
 import { recordedVictory } from './fixtures/ranked-run.js';
+import { DEFAULT_MECHANICS } from '../src/challenge-rules.js';
 
 // These configs deliberately have no rulesVersion: previously issued tickets
 // must retain their original challenge and score after the harder rules ship.
@@ -24,6 +25,24 @@ test('server replay verifies complete routes on every map and derives points fro
     assert.ok(Math.abs(result.elapsed - recording.seconds) < .001);
   }
   assert.equal(layouts.size, 3);
+});
+
+test('replaying the same route with version-twelve retry time does not raise its verified score', () => {
+  const first = legacyConfig('retry-scoring-replay', {
+    rulesVersion:12, mode:'storm', timeLimit:70, scoreTimeLimit:70,
+    mechanics:Object.fromEntries(Object.keys(DEFAULT_MECHANICS).map(key => [key,false])),
+  });
+  const recording = recordedVictory(first);
+  const initial = replayRun(first, recording.trace);
+  const assisted = replayRun({ ...first, timeLimit:80 }, recording.trace);
+  assert.equal(initial.status, 'won'); assert.equal(assisted.status, 'won');
+  assert.equal(assisted.elapsed, initial.elapsed);
+  assert.equal(assisted.score, initial.score);
+  assert.equal(assisted.bonuses, initial.bonuses);
+  const legacy = replayRun({ ...first, rulesVersion:11, timeLimit:80 }, recording.trace);
+  assert.equal(legacy.status, 'won'); assert.equal(legacy.elapsed, initial.elapsed);
+  assert.equal(legacy.score, initial.score + 50, 'issued v11 tickets preserve the previous time-bonus formula');
+  assert.equal(Object.hasOwn(legacy, 'scoreTimeLimit'), false);
 });
 
 test('input recording compresses repeated ticks without losing shield or repeated path clicks', () => {

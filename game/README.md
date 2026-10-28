@@ -112,6 +112,27 @@ latest server nickname is displayed separately. Changing a nickname preserves
 scores. The leaderboard uses one best verified result per player. Each submitted
 run is replayed with server rules, rather than trusting a client-supplied score.
 
+## Achievements and cosmetic rewards
+
+The paused menu contains **Achievements & style**. A server-verified win awards
+Untouchable for zero hits (Moonlight palette), Treasure seeker for both bonus
+coins (Spark movement trail), and Hunter slayer for defeating the hunter (profile
+badge). Select unlocked rewards and choose **Save style**; the selection and
+achievements persist on the Discord profile within the server/campaign. Badges
+also appear in the shared ranking. Cosmetics do not change movement, collisions,
+abilities or scoring; movement trails respect reduced-motion preferences.
+
+Both database backends add a nullable rewards column without replacing existing
+progress. Awards and run completion are committed together; duplicate submissions
+do not grant duplicate achievements. Historical results are not backfilled when
+the required verified details are unavailable.
+
+New runs use rules version 12. Retry assistance still adds up to ten seconds, but
+the time bonus uses the original level deadline. Already issued versions 1–11
+retain their original replay rules and scores. The compact gameplay HUD keeps the
+quest, time, health and Menu visible; profile, level/score details, rotation,
+character selection and tools are in the paused menu.
+
 ## Validation
 
 ```sh

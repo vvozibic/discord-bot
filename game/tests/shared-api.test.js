@@ -42,7 +42,7 @@ test('two authenticated players share a durable board, with one verified best re
     assert.equal(alice.profile.name, 'Alice'); assert.equal(bob.profile.name, '<Bob>');
     for (const session of [alice, bob]) {
       const plan = (await f.request('/runs', { token:session.token, method:'POST', body:{} })).body;
-      assert.equal(plan.config.rulesVersion, 11);
+      assert.equal(plan.config.rulesVersion, 12);
       assert.equal(plan.config.mode, 'storm');
       assert.equal(plan.config.timeLimit, 70);
       assert.deepEqual(plan.config.mechanics, { orderedCoins:true, pulseTraps:true, alarm:true, armor:true, exitWindow:true,
@@ -57,7 +57,7 @@ test('two authenticated players share a durable board, with one verified best re
       const next = (await f.request('/runs', { token:session.token, method:'POST', body:{} })).body;
       assert.equal(next.config.level, 2);
       assert.equal(next.config.layoutId, 'rustworks');
-      assert.equal(next.config.rulesVersion, 11);
+      assert.equal(next.config.rulesVersion, 12);
       assert.equal(next.config.mode, 'storm');
       assert.equal(next.config.timeLimit, 65);
       assert.deepEqual(next.config.enemies, ['wisp','scout','sentinel','scout']);
@@ -126,14 +126,14 @@ test('an outstanding ticket with implicit legacy rules survives deployment and a
     assert.equal(result.body.score, replayRun(legacy, recording.trace).score);
     const next = await f.request('/runs', { token:alice.token, method:'POST', body:{} });
     assert.equal(next.status, 200); assert.notEqual(next.body.ticket, resumed.body.ticket);
-    assert.equal(next.body.config.level, 3); assert.equal(next.body.config.rulesVersion, 11);
+    assert.equal(next.body.config.level, 3); assert.equal(next.body.config.rulesVersion, 12);
     assert.equal(next.body.config.timeLimit, 60); assert.equal(next.body.config.maxHits, 3);
     assert.equal(next.body.config.mechanics.orderedCoins, true);
     assert.equal((await f.request('/leaderboard', { token:alice.token })).body.you.level, 2);
   } finally { await f.close(); rmSync(directory, { recursive:true, force:true }); }
 });
 
-for (const rulesVersion of [2,3,4,5,6,7,8,9,10]) test(`an outstanding version-${rulesVersion} ticket keeps its rules and finishes before version-eleven progression`, async () => {
+for (const rulesVersion of [2,3,4,5,6,7,8,9,10,11]) test(`an outstanding version-${rulesVersion} ticket keeps its rules and finishes before version-twelve progression`, async () => {
   const directory = mkdtempSync(join(tmpdir(), `forest-trail-v${rulesVersion}-api-`));
   const path = join(directory, 'rankings.sqlite'), board = 'guild:333333333333333333:event:tag';
   const saved = { version:1, seed:`v${rulesVersion}-issued-api`, level:1, skill:0, streak:0, attempt:0, recentMaps:[],
@@ -160,7 +160,7 @@ for (const rulesVersion of [2,3,4,5,6,7,8,9,10]) test(`an outstanding version-${
     assert.equal(result.status, 200); assert.equal(result.body.status, 'won');
     assert.equal(result.body.score, replayRun(previous, recording.trace).score);
     const next = await f.request('/runs', { token:alice.token, method:'POST', body:{} });
-    assert.equal(next.body.config.level, 2); assert.equal(next.body.config.rulesVersion, 11);
+    assert.equal(next.body.config.level, 2); assert.equal(next.body.config.rulesVersion, 12);
     assert.equal(next.body.config.mechanics.lava, true); assert.equal(next.body.config.mechanics.dash, true);
   } finally { await f.close(); rmSync(directory, { recursive:true, force:true }); }
 });

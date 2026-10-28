@@ -28,11 +28,12 @@ export function createSqliteGameStore(filename, { eventId, now } = {}) {
       return exclusive(async () => {
         db.exec('BEGIN IMMEDIATE');
         const tx = {
-          profile:() => db.prepare('SELECT progress FROM profiles WHERE board=? AND user_id=?').get(board, userId),
+          profile:() => db.prepare('SELECT progress,rewards FROM profiles WHERE board=? AND user_id=?').get(board, userId),
           activeAttempt:() => db.prepare("SELECT * FROM attempts WHERE board=? AND user_id=? AND status='ready' ORDER BY started_at DESC LIMIT 1").get(board, userId),
           attempt:id => db.prepare('SELECT * FROM attempts WHERE id=? AND board=? AND user_id=?').get(id, board, userId),
           abandon:id => db.prepare("UPDATE attempts SET status='abandoned' WHERE id=? AND board=? AND user_id=?").run(id, board, userId),
           saveProgress:value => db.prepare('UPDATE profiles SET progress=? WHERE board=? AND user_id=?').run(value, board, userId),
+          saveRewards:value => db.prepare('UPDATE profiles SET rewards=? WHERE board=? AND user_id=?').run(JSON.stringify(value), board, userId),
           createAttempt:(id, config, startedAt) => db.prepare('INSERT INTO attempts(id,board,user_id,config,started_at) VALUES(?,?,?,?,?)').run(id, board, userId, JSON.stringify(config), startedAt),
           addScore:(attempt, config, result, createdAt) => db.prepare('INSERT INTO scores(attempt_id,board,user_id,level,tier,score,elapsed,layout,created_at) VALUES(?,?,?,?,?,?,?,?,?)')
             .run(attempt.id, board, userId, config.level, config.tier, result.score, result.elapsed, result.layoutName, createdAt),

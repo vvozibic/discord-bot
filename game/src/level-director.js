@@ -1,4 +1,5 @@
 import { LAYOUTS } from './world.js';
+import { CHALLENGE_RULES_VERSION } from './challenge-rules.js';
 
 export const PROGRESS_KEY = 'forest-trail-progress-v1';
 const MAP_IDS = LAYOUTS.map(layout => layout.id);
@@ -55,7 +56,7 @@ function validProgress(value) {
   if (active === null) return true;
   return active && MAP_IDS.includes(active.layoutId) && integer(active.level, 1, 1000000)
     && integer(active.tier, 0, 5) && integer(active.attempt, 0, 1000000)
-    && (active.rulesVersion === undefined || [1,2,3,4,5,6,7,8,9,10,11].includes(active.rulesVersion))
+    && (active.rulesVersion === undefined || [1,2,3,4,5,6,7,8,9,10,11,CHALLENGE_RULES_VERSION].includes(active.rulesVersion))
     && ['ready','won','failed'].includes(active.status)
     && active.level === value.level - Number(active.status === 'won')
     && active.tier <= Math.min(5, active.level - 1);
@@ -77,6 +78,8 @@ function configFor(state, plan) {
     mode:setting.enemies.length ? 'storm' : 'journey', scope:'all',
     enemies:[...(rulesVersion >= 10 && plan.level === 2 ? LEVEL_TWO_GUARDS : setting.enemies)], patrolSpeed:setting.speed,
     timeLimit:setting.timeLimit === null ? null : setting.timeLimit + extraTime,
+    // Retry assistance extends survival time, never the ranked speed bonus.
+    ...(rulesVersion >= 12 ? { scoreTimeLimit:setting.timeLimit } : {}),
     shieldCharges:rulesVersion >= 5 ? 1 : setting.shields + Number(legacy && plan.attempt > 0 && setting.enemies.length > 0),
     ...(!legacy ? { maxHits:setting.maxHits, mechanics:{ ...(rulesVersion === 2 ? VERSION_TWO_MECHANICS : MECHANICS) } } : {}),
   };
@@ -97,9 +100,9 @@ export function createLevelDirector({ storage = storageDefault(), seed = newSeed
   }
   function current({ upgrade = false } = {}) {
     // Only a new attempt request may replace a legacy plan; result checks must not mutate it.
-    if (upgrade && state.active?.status === 'ready' && (state.active.rulesVersion ?? 1) < 11) {
+    if (upgrade && state.active?.status === 'ready' && (state.active.rulesVersion ?? 1) < CHALLENGE_RULES_VERSION) {
       const legacy = (state.active.rulesVersion ?? 1) === 1;
-      state.active.rulesVersion = 11;
+      state.active.rulesVersion = CHALLENGE_RULES_VERSION;
       if (legacy) {
         state.active.tier = Math.min(5, state.level - 1);
         if (state.level === 2) state.active.layoutId = 'rustworks';
@@ -113,7 +116,7 @@ export function createLevelDirector({ storage = storageDefault(), seed = newSeed
       const layoutId = retryMap ?? (state.level === 2 ? 'rustworks' : candidates[hash(`${state.seed}:${state.level}`) % candidates.length]);
       state.active = {
         level:state.level, layoutId, tier:Math.min(5, state.level - 1),
-        attempt:state.attempt, status:'ready', rulesVersion:11,
+        attempt:state.attempt, status:'ready', rulesVersion:CHALLENGE_RULES_VERSION,
       };
       persist();
     }

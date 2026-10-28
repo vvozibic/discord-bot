@@ -5,7 +5,7 @@ export function createOrientationControl({ social, onNotice }) {
   let busy = false, requested = null;
   function update() {
     for (const button of buttons) {
-      button.hidden = !social.mobile || (button.hasAttribute('data-game-orientation') && landscape.matches);
+      button.hidden = !social.mobile;
       button.disabled = busy;
       button.querySelector('[data-orientation-label]').textContent = busy ? 'Switching…' : landscape.matches ? 'Portrait mode' : 'Landscape mode';
       const detail = button.querySelector('small');
