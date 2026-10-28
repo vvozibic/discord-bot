@@ -1,5 +1,22 @@
+const CONNECTION_MESSAGES = {
+  authorizing:'Finish the Discord authorization window to connect your profile. If no window appears, reload the Activity.',
+  verifying:'Checking your Discord profile and server access.',
+  authenticating:'Waiting for Discord to confirm your profile.',
+};
+
+async function withTimeout(operation, milliseconds, message) {
+  let timeout;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(message)), milliseconds); }),
+    ]);
+  } finally { clearTimeout(timeout); }
+}
+
 export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } = {}) {
   let sdk = null, clientId = '', config = null, session = null, busy = false;
+  let connectionStage = '', connectionError = '';
   const listeners = new Set([onChange]);
   function emit() { for (const listener of listeners) listener(); }
   async function request(path, { method = 'GET', body, token = session?.token } = {}) {
@@ -28,26 +45,38 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
     get configured() { return Boolean(config?.configured); },
     get insideDiscord() { return Boolean(sdk); },
     get busy() { return busy; },
+    get connectionStage() { return connectionStage; },
+    get connectionMessage() { return CONNECTION_MESSAGES[connectionStage] ?? ''; },
+    get connectionError() { return connectionError; },
     get profile() { return session ? { ...session.profile } : null; },
     get boardName() { return session?.boardName ?? config?.eventName ?? 'TAG campaign'; },
     async connect() {
       if (busy) return;
       if (!sdk) throw new Error('Open Forest Trail inside Discord to connect your profile.');
       if (!config?.configured) throw new Error('Discord profile connections are not available: server setup is incomplete. Please contact an administrator.');
-      busy = true; emit();
+      busy = true; connectionError = ''; connectionStage = 'authorizing'; emit();
       let authorized;
       try {
-        const { code } = await sdk.commands.authorize({ client_id:clientId, response_type:'code', prompt:'none', state:crypto.randomUUID(),
-          scope:sdk.guildId ? ['identify','guilds.members.read'] : ['identify'] });
+        // SDK commands have no built-in deadline. A dropped native-client reply
+        // must not keep every Connect button disabled indefinitely.
+        const { code } = await withTimeout(() => sdk.commands.authorize({ client_id:clientId, response_type:'code', prompt:'none', state:crypto.randomUUID(),
+          scope:sdk.guildId ? ['identify','guilds.members.read'] : ['identify'] }), 60000,
+          'Discord authorization did not respond. Tap Connect profile to try again, or reload the Activity.');
+        connectionStage = 'verifying'; emit();
         authorized = await request('/discord/session', { method:'POST', token:null, body:{ code, guildId:sdk.guildId ?? null } });
-        const authentication = await sdk.commands.authenticate({ access_token:authorized.accessToken });
+        connectionStage = 'authenticating'; emit();
+        const authentication = await withTimeout(() => sdk.commands.authenticate({ access_token:authorized.accessToken }), 15000,
+          'Discord did not confirm your profile. Tap Connect profile to try again, or reload the Activity.');
         if (authentication?.user?.id !== authorized.profile.id) throw new Error('Discord could not confirm your profile. Please try again.');
         const { accessToken:discarded, ...applicationSession } = authorized;
         session = applicationSession;
       } catch (error) {
-        if (authorized?.token) await request('/discord/session', { method:'DELETE', token:authorized.token }).catch(() => {});
-        throw new Error(error.message || 'Profile connection was cancelled. You can try again.');
-      } finally { busy = false; emit(); }
+        // Revoke only this failed attempt's token, without delaying recovery on
+        // another network request. A late SDK reply cannot resume a timed-out await.
+        if (authorized?.token) void request('/discord/session', { method:'DELETE', token:authorized.token }).catch(() => {});
+        connectionError = error.message || 'Profile connection was cancelled. You can try again.';
+        throw new Error(connectionError);
+      } finally { busy = false; connectionStage = ''; emit(); }
     },
     async disconnect() {
       if (session) await request('/discord/session', { method:'DELETE' }).catch(() => {});
