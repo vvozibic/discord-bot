@@ -24,6 +24,8 @@ import { createDiscordService } from './discord-service.js';
 import { createMainMenu } from './main-menu.js';
 import { createOrientationControl } from './orientation-control.js';
 import { createRunTrace } from './run-trace.js';
+import { createRewardsUI } from './rewards-ui.js';
+import { createCosmeticTrail } from './cosmetic-art.js';
 import { ENEMIES as enemyDefinitions, updatePatrols } from './enemy-rules.js';
 import './adventure.css';
 
@@ -83,13 +85,17 @@ let ground, locationPortalTextures, scenery = [];
 const { guardianTexture, guardianAnchor } = createHeroArt();
 let heroArt = createHeroArt('wizard');
 let selectedCharacter = 'wizard';
+let equippedStyle = { palette:'classic', trail:'none', badge:'none' };
+const cosmeticTrail = createCosmeticTrail();
 const actorOrder = [];
 const byDepth = (a, b) => a.y - b.y;
-let mainMenu;
+let mainMenu, rewardsUI;
 const ui = createReplayUI({
   audio, director:createLevelDirector(), social, requireProfile:true, getTrace:() => runTrace.snapshot(), onNotice:message => tell(message, 8000),
   onError:message => { mainMenu?.notice(message); tell(message, 8000); },
   isMenuOpen:() => mainMenu?.open ?? true,
+  isOverlayOpen:() => rewardsUI?.open ?? false,
+  onVerifiedResult:(result,ticket) => rewardsUI?.present(result,ticket),
   onStart:config => { mainMenu.hide(); startExpedition(config); },
   getChallenge:() => simulation?.challenge,
   getSimulation:() => simulation,
@@ -114,13 +120,22 @@ mainMenu = createMainMenu({ social,
   onLeaderboard:() => ui.openRecords('shared'), onChange:() => ui.syncPause(),
 });
 createOrientationControl({ social, onNotice:message => tell(message, 8000) });
-createCharacterPicker({
+const characterPicker = createCharacterPicker({
+  getPalette:() => equippedStyle.palette,
   onChange(id) {
-    selectedCharacter = id; heroArt = createHeroArt(id); canvas.dataset.character = id;
+    selectedCharacter = id; heroArt = createHeroArt(id,equippedStyle.palette); canvas.dataset.character = id;
     if (setMagicCharacter(simulation,id)) runTrace.character(id);
     ui.updateHUD();
   },
   onDialogChange:() => ui.syncPause(),
+});
+rewardsUI = createRewardsUI({ social, getCharacter:() => selectedCharacter,
+  onDialogChange:() => ui.syncPause(),
+  onChange(style) {
+    equippedStyle = style; heroArt = createHeroArt(selectedCharacter,style.palette); characterPicker.refresh();
+    canvas.dataset.palette = style.palette; canvas.dataset.trail = style.trail;
+    cosmeticTrail.clear();
+  },
 });
 function refreshControlHelp() {
   const help = getControlsHelp();
@@ -347,6 +362,7 @@ function startExpedition(config) {
   runTrace = createRunTrace();
   if (setMagicCharacter(simulation,selectedCharacter)) runTrace.character(selectedCharacter);
   damageFeedback.clear(); impactFrame = damageFeedback.sample(reducedMotion); pendingDefeat = null;
+  cosmeticTrail.clear(); rewardsUI?.resetResult();
   hunterLaughCue.reset();
   repathRequested = false;
   const scene = createSceneryArt(); ground = scene.ground;
@@ -465,6 +481,7 @@ function update(dt, now) {
   repathRequested = false;
   const previousHunterDash = simulation.challenge.terrain?.hunter?.dashPhase;
   const events = stepSimulation(simulation, input, dt);
+  cosmeticTrail.advance(dt,player,equippedStyle.trail === 'spark' && !reducedMotion);
   const hunterDash = simulation.challenge.terrain?.hunter?.dashPhase;
   if (hunterDash !== previousHunterDash && ['windup','charge'].includes(hunterDash)) audio.hunterDash(hunterDash === 'charge');
   path = simulation.path;
@@ -739,6 +756,7 @@ function draw(time) {
     ctx.strokeRect(Math.round(goal.x) - 5, Math.round(goal.y) - 5, 10, 10);
   }
   drawPortal(time, exitStatus(simulation?.challenge, run).open);
+  if (!reducedMotion) cosmeticTrail.draw(ctx);
   actorOrder.length = 0;
   for (const item of items) if (!item.collected) actorOrder.push(item);
   for (const hazard of hazards) actorOrder.push(hazard);

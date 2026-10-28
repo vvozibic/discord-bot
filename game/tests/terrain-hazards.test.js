@@ -18,7 +18,7 @@ function challengeFor(mechanics, options = {}) {
 }
 
 test('ten mechanics are independently configurable and older tickets retain their original hazards', () => {
-  assert.equal(CHALLENGE_RULES_VERSION, 11);
+  assert.equal(CHALLENGE_RULES_VERSION, 12);
   assert.equal(MECHANICS.length, 10);
   assert.equal(new Set(MECHANICS.map(({ key }) => key)).size, 10);
   assert.deepEqual(mechanicsFor(), disabled);
@@ -34,6 +34,7 @@ test('ten mechanics are independently configurable and older tickets retain thei
   assert.deepEqual(mechanicsFor({ rulesVersion:9 }), DEFAULT_MECHANICS);
   assert.deepEqual(mechanicsFor({ rulesVersion:10 }), DEFAULT_MECHANICS);
   assert.deepEqual(mechanicsFor({ rulesVersion:11 }), DEFAULT_MECHANICS);
+  assert.deepEqual(mechanicsFor({ rulesVersion:12 }), DEFAULT_MECHANICS);
   assert.deepEqual(mechanicsFor({ rulesVersion:3, mechanics:disabled }), disabled);
   for (const { key } of MECHANICS) {
     assert.equal(mechanicsFor({ rulesVersion:3, mechanics:{ [key]:false } })[key], false);

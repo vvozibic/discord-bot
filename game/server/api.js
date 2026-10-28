@@ -4,6 +4,7 @@ import { createDiscordAuth } from './discord-auth.js';
 import { createLevelDirector, PROGRESS_KEY } from '../src/level-director.js';
 import { replayRun } from './replay.js';
 import { createDiscordBot } from './bot/interactions.js';
+import { normalizeRewards, equipRewards, grantRewards } from '../src/rewards.js';
 
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const LIMIT = 1024 * 1024;
@@ -103,9 +104,10 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
         for (const [id, value] of sessions) if (value.expires <= now()) sessions.delete(id);
         if (sessions.size >= 10000) throw new ApiError(503, 'Please try connecting again shortly');
         await store.upsertProfile(board, verified.profile);
+        const rewards = await store.transaction(board, verified.profile.id, async tx => normalizeRewards((await tx.profile())?.rewards));
         sessions.set(token, session);
         send(response, 200, { token, accessToken:verified.accessToken, profile:verified.profile,
-          boardName:session.boardName, expiresAt:session.expires }); return;
+          boardName:session.boardName, expiresAt:session.expires, rewards }); return;
       }
       const session = getSession(request);
       rate(`user:${session.profile.id}`, 120);
@@ -114,6 +116,21 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
       }
       if (pathname === '/api/leaderboard' && request.method === 'GET') {
         send(response, 200, { ...(await store.ranking(session.board, session.profile.id)), boardName:session.boardName }); return;
+      }
+      if (pathname === '/api/rewards' && ['GET','PUT'].includes(request.method)) {
+        const input = request.method === 'PUT' ? await jsonBody(request) : null;
+        if (input && (Object.keys(input).length !== 1 || !Object.hasOwn(input, 'equipped'))) throw new ApiError(400, 'Only cosmetic selections can be updated.');
+        const rewards = await store.transaction(session.board, session.profile.id, async tx => {
+          const profile = await tx.profile();
+          if (!profile) throw new ApiError(401, 'Reconnect your Discord profile to continue');
+          if (!input) return normalizeRewards(profile.rewards);
+          let selected;
+          try { selected = equipRewards(profile.rewards, input.equipped); }
+          catch (error) { throw new ApiError(400, error.message); }
+          await tx.saveRewards(selected);
+          return selected;
+        });
+        send(response, 200, rewards); return;
       }
       if (pathname === '/api/runs' && request.method === 'POST') {
         const input = await jsonBody(request);
@@ -139,7 +156,7 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
         const answer = await store.transaction(session.board, session.profile.id, async tx => {
           const attempt = await tx.attempt(input.ticket);
           if (!attempt) throw new ApiError(404, 'Attempt not found');
-          if (attempt.result) return JSON.parse(attempt.result);
+          if (attempt.result) return { ...JSON.parse(attempt.result), rewards:normalizeRewards((await tx.profile())?.rewards) };
           if (attempt.status !== 'ready') throw new ApiError(409, 'This attempt has been restarted');
           if (now() - attempt.started_at > 3600000) throw new ApiError(409, 'This attempt has expired. Restart the level to continue.');
           const config = JSON.parse(attempt.config);
@@ -147,13 +164,16 @@ export function createGameApi({ databasePath = ':memory:', clientId = '', client
           try { result = replayRun(config, input.trace); }
           catch { throw new ApiError(422, 'This run could not be verified. Restart the level to try again.'); }
           if (result.simulationSeconds > (now() - attempt.started_at) / 1000 + 3) throw new ApiError(422, 'This run finished faster than its verified duration');
-          const { director, flush } = directorFor(await tx.profile());
+          const profile = await tx.profile();
+          const { director, flush } = directorFor(profile);
           if (!director.complete(config, result)) throw new ApiError(409, 'The level has already changed');
           if (!director.available) throw new ApiError(503, 'Progress could not be saved. Please try again.');
           await flush(tx);
+          const { rewards, newAchievements } = grantRewards(profile.rewards, result);
+          if (newAchievements.length) await tx.saveRewards(rewards);
           if (result.status === 'won') await tx.addScore(attempt, config, result, now());
           const ranking = await tx.ranking();
-          const answer = { status:result.status, score:result.score, elapsed:result.elapsed, bonuses:result.bonuses, hits:result.hits, level:config.level, rank:ranking.you?.rank ?? null,
+          const answer = { status:result.status, score:result.score, elapsed:result.elapsed, bonuses:result.bonuses, hits:result.hits, level:config.level, rank:ranking.you?.rank ?? null, rewards, newAchievements,
             message:result.status === 'won' ? `Verified · #${ranking.you.rank} on ${session.boardName}` : 'Your level is kept. The challenge stays active, with up to 10 extra seconds on retry.' };
           await tx.finish(attempt.id, result.status, answer);
           return answer;

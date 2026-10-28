@@ -1,3 +1,5 @@
+import { normalizeRewards } from './rewards.js';
+
 // Discord Embedded App SDK OrientationLockState enum values.
 const ORIENTATION_LOCKS = Object.freeze({ unlocked:1, portrait:2, landscape:3 });
 const CONNECTION_MESSAGES = {
@@ -20,6 +22,7 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
   let sdk = null, clientId = '', config = null, session = null, busy = false;
   let connectionStage = '', connectionError = '';
   const listeners = new Set([onChange]);
+  const rewardQueues = new WeakMap();
   function emit() { for (const listener of listeners) listener(); }
   async function request(path, { method = 'GET', body, token = session?.token } = {}) {
     let response;
@@ -38,6 +41,21 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
     }
     return result;
   }
+  function queueRewardRequest(current, path, options = {}, rewardsFrom = result => result) {
+    // Read and write snapshots in request order so a delayed collection load
+    // cannot undo a verified unlock or equipped style. New logins use a new queue.
+    const previous = rewardQueues.get(current) ?? Promise.resolve();
+    const pending = previous.catch(() => {}).then(async () => {
+      if (session !== current) throw new Error('Your profile changed. Reconnect to continue.');
+      const result = await request(path, { ...options, token:current.token });
+      if (session !== current) throw new Error('Your profile changed. Reconnect to continue.');
+      const rewards = rewardsFrom(result);
+      if (rewards) { current.rewards = normalizeRewards(rewards); emit(); }
+      return result;
+    });
+    rewardQueues.set(current, pending);
+    return pending;
+  }
   return {
     subscribe(listener) { listeners.add(listener); listener(); return () => listeners.delete(listener); },
     async initialize() { try { config = await request('/config'); } catch { config = { configured:false }; } emit(); },
@@ -52,6 +70,7 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
     get connectionMessage() { return CONNECTION_MESSAGES[connectionStage] ?? ''; },
     get connectionError() { return connectionError; },
     get profile() { return session ? { ...session.profile } : null; },
+    get rewards() { return normalizeRewards(session?.rewards); },
     get boardName() { return session?.boardName ?? config?.eventName ?? 'TAG campaign'; },
     async setOrientation(orientation) {
       if (!['landscape', 'portrait'].includes(orientation)) throw new Error('Unknown screen orientation.');
@@ -97,9 +116,17 @@ export function createDiscordService({ fetchImpl = fetch, onChange = () => {} } 
       if (!session) throw new Error('Reconnect your Discord profile to continue.');
       return request('/runs', { method:'POST', body:{ restart } });
     },
-    finishRun(ticket, trace) {
+    async finishRun(ticket, trace) {
       if (!session) throw new Error('Reconnect your Discord profile to save this run.');
-      return request('/runs/finish', { method:'POST', body:{ ticket, trace } });
+      return queueRewardRequest(session, '/runs/finish', { method:'POST', body:{ ticket, trace } }, result => result.rewards);
+    },
+    async loadRewards() {
+      if (!session) throw new Error('Connect your Discord profile to view achievements.');
+      return normalizeRewards(await queueRewardRequest(session, '/rewards'));
+    },
+    async equipRewards(equipped) {
+      if (!session) throw new Error('Connect your Discord profile to save your style.');
+      return normalizeRewards(await queueRewardRequest(session, '/rewards', { method:'PUT', body:{ equipped:{ ...equipped } } }));
     },
     leaderboard() {
       if (!session) throw new Error('Connect your Discord profile to see the shared ranking.');

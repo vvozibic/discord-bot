@@ -6,7 +6,7 @@ import { lavaContains } from '../../src/terrain-hazards.js';
 import { setMagicCharacter, magicStatus } from '../../src/magic-rules.js';
 
 export function recordedVictory(config, { bonuses = true, repeatTarget = false } = {}) {
-  if ([2,3,4,5,6,7,8,9,10,11].includes(config.rulesVersion)) return recordedHardVictory(config, { bonuses, repeatTarget });
+  if ([2,3,4,5,6,7,8,9,10,11,12].includes(config.rulesVersion)) return recordedHardVictory(config, { bonuses, repeatTarget });
   const expedition = createExpedition(config.seed, { layoutId:config.layoutId, hazardCount:config.enemies.length });
   const player = { ...SPAWN }, trace = createRunTrace();
   const goals = [...(bonuses ? expedition.bonuses : []), ...expedition.items, { ...PORTAL }];
