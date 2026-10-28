@@ -9,6 +9,16 @@ const nearPond = (x, y, margin = 0) => x >= POND.x - margin && x < POND.x + POND
 const insideHut = (x, y) => x >= HUT.x - 8 && x <= HUT.x + HUT.width + 8
   && y >= HUT.y - 20 && y <= HUT.y + HUT.height + 8;
 
+// The light is painted into the map once: no lights, extra layers or frame work.
+const sunClearings = [[176, 112, 100, 62], [388, 358, 132, 82], [632, 374, 90, 56]];
+function sunlight(x, y) {
+  let light = 0;
+  for (const [cx, cy, rx, ry] of sunClearings) {
+    light = Math.max(light, 1 - ((x - cx) / rx) ** 2 - ((y - cy) / ry) ** 2);
+  }
+  return light;
+}
+
 // Integer scan lines keep every contour crisp at the game's native resolution.
 function pixelOval(ctx, x, y, width, height, color) {
   const rx = width / 2, ry = height / 2;
@@ -37,12 +47,15 @@ function fern(ctx, x, y, seed) {
 }
 
 function paintMeadow(ctx) {
-  rect(ctx, 0, 0, WORLD.width, WORLD.height, '#658258');
+  rect(ctx, 0, 0, WORLD.width, WORLD.height, '#607e57');
   // Broad soft patches avoid a visible tile grid while leaving the trail legible.
   for (let y = 0; y < WORLD.height; y += 4) for (let x = 0; x < WORLD.width; x += 4) {
     const patch = hash(Math.floor(x / 44) * 44, Math.floor(y / 36) * 36);
     const shade = hash(x, y) * .45 + patch * .55;
-    const color = shade < .25 ? '#607d53' : shade > .76 ? '#6b895b' : '#658258';
+    const light = sunlight(x, y) + hash(x + 31, y + 7) * .13;
+    const color = light > .65 ? (shade > .5 ? '#86965e' : '#7f915c')
+      : light > .26 ? (shade > .5 ? '#72895a' : '#6a8358')
+      : shade < .25 ? '#597650' : shade > .76 ? '#66845a' : '#607e57';
     rect(ctx, x, y, 4, 4, color);
   }
   for (let y = 6; y < WORLD.height - 5; y += 9) for (let x = 5; x < WORLD.width - 5; x += 9) {
@@ -75,10 +88,12 @@ function paintPaths(ctx) {
   // Draw the union of the trails, so crossroads never gain artificial seams.
   for (let y = 48; y < WORLD.height - 40; y += 2) for (let x = 32; x < WORLD.width - 32; x += 2) {
     if (onPath(x, y)) {
-      const edge = !onPath(x - 2, y) || !onPath(x + 2, y) || !onPath(x, y - 2) || !onPath(x, y + 2);
-      rect(ctx, x, y, 2, 2, edge ? '#aa9e6e' : '#b7a675');
+      const litEdge = !onPath(x - 2, y) || !onPath(x, y - 2);
+      const shadedEdge = !onPath(x + 2, y) || !onPath(x, y + 2);
+      const light = sunlight(x, y);
+      rect(ctx, x, y, 2, 2, litEdge ? '#d3c293' : shadedEdge ? '#a3976d' : light > .35 ? '#ceba8c' : '#beac80');
     } else if (onPath(x, y, 3)) {
-      rect(ctx, x, y, 2, 2, hash(x, y) > .3 ? '#889162' : '#728557');
+      rect(ctx, x, y, 2, 2, hash(x, y) > .3 ? '#8d9467' : '#738158');
     }
   }
   for (let y = 46; y < WORLD.height - 40; y += 5) for (let x = 32; x < WORLD.width - 32; x += 7) {
@@ -92,6 +107,32 @@ function paintPaths(ctx) {
     if (!onPath(x, y, 5) || onPath(x, y, 1) || nearPond(x, y, 12)) continue;
     if (hash(x, y) > .42) grass(ctx, x, y, hash(y, x));
   }
+  // Tiny flat stones and worn soil stay quiet; they are never new obstacles.
+  for (let y = 56; y < WORLD.height - 42; y += 21) for (let x = 43; x < WORLD.width - 40; x += 25) {
+    const seed = hash(x + 37, y + 13);
+    if (seed < .81 || nearPond(x, y, 12) || insideHut(x, y)) continue;
+    if (onPath(x, y)) {
+      rect(ctx, x, y, 3, 1, '#9e946f'); rect(ctx, x, y - 1, 2, 1, '#dfcda1');
+    } else if (seed > .91) {
+      rect(ctx, x, y, 3, 1, '#9c9b6b'); rect(ctx, x + 3, y + 1, 2, 1, '#7f895c');
+    }
+  }
+}
+
+function paintGroundDepth(ctx) {
+  // Low-opacity cast shadows connect objects to the floor without hiding paths.
+  for (const { x, y } of TREES) {
+    pixelOval(ctx, x - 13, y + 9, 48, 13, '#173c3020');
+    pixelOval(ctx, x + 1, y + 15, 36, 10, '#173c3012');
+    for (const direction of [-1, 1]) {
+      const rx = x + direction * 8, ry = y + 15;
+      if (onPath(rx, ry, 2) || nearPond(rx, ry, 3)) continue;
+      rect(ctx, rx - 2, ry, 5, 1, '#766b45');
+      rect(ctx, rx + direction * 3, ry + 1, 3, 1, '#887c4e');
+    }
+  }
+  rect(ctx, HUT.x + 7, HUT.y + HUT.height, HUT.width + 5, 5, '#193d3026');
+  rect(ctx, HUT.x + 13, HUT.y + HUT.height + 5, HUT.width - 4, 3, '#193d3014');
 }
 
 function paintPond(ctx) {
@@ -182,13 +223,13 @@ function paintRocks(ctx) {
 function paintTree(ctx, variant) {
   const x = 26, y = 52;
   const palettes = [
-    ['#24473a', '#315b43', '#47764c', '#608b54', '#85a663'],
-    ['#24483f', '#315e4a', '#477b59', '#629363', '#8eaf72'],
-    ['#2b4938', '#3c6345', '#537c4c', '#709359', '#9aaf68'],
+    ['#203e35', '#2c503e', '#406a47', '#5c8150', '#8aa365'],
+    ['#203f39', '#2b5545', '#406f53', '#5c885f', '#8fa96e'],
+    ['#283f31', '#37573e', '#4c6e45', '#6b8652', '#a0aa67'],
   ];
   const [deep, dark, mid, light, tip] = palettes[variant % 3];
-  pixelOval(ctx, x - 21, y + 7, 43, 12, '#456747');
-  pixelOval(ctx, x - 15, y + 8, 30, 8, '#3b5c40');
+  pixelOval(ctx, x - 21, y + 7, 43, 12, '#1c3b302b');
+  pixelOval(ctx, x - 15, y + 8, 30, 8, '#16382d2b');
   rect(ctx, x - 4, y - 10, 8, 25, '#493f2e'); rect(ctx, x - 2, y - 9, 5, 22, '#795b39');
   rect(ctx, x - 1, y - 8, 2, 22, '#a17a48'); rect(ctx, x + 2, y + 1, 1, 12, '#624c34');
   rect(ctx, x - 7, y + 13, 5, 2, '#6e5839'); rect(ctx, x + 2, y + 13, 6, 2, '#5d4e35');
@@ -224,7 +265,7 @@ function paintTree(ctx, variant) {
 function paintHut(ctx) {
   // Local (12, 24) is the unchanged top-left of the hut collider.
   const x = 12, y = 24, w = HUT.width, h = HUT.height;
-  pixelOval(ctx, x - 7, y + h - 6, w + 16, 14, '#426343');
+  pixelOval(ctx, x - 7, y + h - 6, w + 16, 14, '#16382d35');
   rect(ctx, x + 2, y + 22, w - 4, h - 22, '#9f8a61');
   rect(ctx, x + 5, y + 25, w - 10, h - 31, '#c0a87a');
   rect(ctx, x + 5, y + 29, w - 10, 2, '#dbc18d');
@@ -288,7 +329,7 @@ function paintHut(ctx) {
 
 function logAsset(log) {
   return texture(log.width + 8, log.height + 10, ctx => {
-    pixelOval(ctx, 0, 7, log.width + 8, log.height + 1, '#456746');
+    pixelOval(ctx, 0, 7, log.width + 8, log.height + 1, '#193b3033');
     rect(ctx, 3, 4, log.width, log.height, '#594b33');
     rect(ctx, 3, 3, log.width - 2, 9, '#84633e'); rect(ctx, 5, 3, log.width - 5, 3, '#b18e58');
     rect(ctx, 7, 4, log.width - 13, 1, '#c2a26a'); rect(ctx, 5, 9, log.width - 5, 2, '#654f34');
@@ -310,7 +351,7 @@ export function createSceneryArt() {
     const art = createIndustrialArt(); artCache.set(layoutId, art); return art;
   }
   const ground = texture(WORLD.width, WORLD.height, ctx => {
-    paintMeadow(ctx); paintPaths(ctx); paintPond(ctx); paintRocks(ctx);
+    paintMeadow(ctx); paintPaths(ctx); paintGroundDepth(ctx); paintPond(ctx); paintRocks(ctx);
   });
   // All layouts share six tree textures and one hut; only the map ground is baked per layout.
   const trees = sharedTrees ??= Array.from({ length: 6 }, (_, variant) => texture(52, 72, ctx => paintTree(ctx, variant)));

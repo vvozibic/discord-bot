@@ -663,3 +663,65 @@ footer .open-menu { color: #e7f2d8; border-color: #85a775; background: #36573e; 
   .menu-hero h1 { font-size: 36px; }
   .menu-copy { margin-top: 7px; font-size: 13px; }
 }
+
+/* A reserved notice row never covers the trail or resizes it as messages change. */
+.play-topline .notice-slot {
+  grid-column: 1 / -1; position: relative; min-width: 0; height: 32px;
+  padding: 0 8px; border-left: 2px solid #9eae78; color: #e1e7cd;
+  font-size: 12px; line-height: 16px;
+}
+.notice-slot .notice-idle { display: flex; align-items: center; height: 100%; color: #b8cbb6; }
+.notice-slot:has(.toast:not([hidden])) .notice-idle { display: none; }
+.game[data-screen="game"] .notice-slot .toast {
+  position: static; inset: auto; transform: none; width: 100%; max-width: none;
+  height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: none; color: inherit; font: inherit; overflow: auto;
+  overflow-wrap: anywhere; pointer-events: auto; overscroll-behavior: contain;
+}
+.world-frame .ability-controls {
+  position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px; max-width: calc(100% - 188px); pointer-events: none;
+}
+.world-frame .ability-controls > :is(.shield-button, .dash-button, .magic-button, .interact) {
+  position: static; inset: auto; width: auto; min-width: 44px; min-height: 48px;
+  white-space: nowrap; pointer-events: auto;
+}
+.world-frame .ability-controls > .interact { position: absolute; left: 0; bottom: calc(100% + 8px); }
+.ability-controls .interact { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ability-controls .interact span { margin: 0; color: inherit; }
+.ability-controls .interact-caption { font-size: 11px; font-weight: 500; }
+
+/* Fixed slots preserve thumb positions when a character has no magic or Talk hides. */
+@media (pointer: coarse), (max-width: 600px), (max-width: 960px) and (max-height: 500px), (orientation: landscape) and (max-width: 1280px) and (max-height: 600px) {
+  .world-frame .ability-controls {
+    --ability-size: 60px; position: absolute; left: auto; right: 12px; bottom: 12px;
+    width: max-content; max-width: none;
+    display: grid; grid-template-columns: repeat(2, var(--ability-size));
+    grid-template-rows: repeat(2, var(--ability-size)); gap: 8px;
+    pointer-events: none;
+  }
+  .world-frame .ability-controls > :is(.shield-button, .dash-button, .magic-button, .interact) {
+    position: static; inset: auto; transform: none;
+    width: var(--ability-size); height: var(--ability-size); min-width: 44px; min-height: 44px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 4px 2px; gap: 1px; border-radius: 15px; pointer-events: auto;
+  }
+  .world-frame .ability-controls > .interact { grid-area: 1 / 1; }
+  .world-frame .ability-controls > .magic-button { grid-area: 1 / 2; }
+  .world-frame .ability-controls > .dash-button { grid-area: 2 / 1; }
+  .world-frame .ability-controls > .shield-button { grid-area: 2 / 2; }
+  .world-frame .ability-controls > button > svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .ability-controls :is(.shield-label, .dash-label, .magic-label, .interact-label) { font-size: 11px; line-height: 13px; font-weight: 700; }
+  .world-frame .ability-controls :is(.shield-charge, .dash-charge, .magic-charge, .interact-caption) {
+    position: static; inset: auto; display: block; min-width: 0; min-height: 0;
+    max-width: 100%; padding: 0; margin: 0; border: 0; border-radius: 0;
+    background: none; color: inherit; font-size: 10px; line-height: 12px;
+    font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .world-frame .ability-controls ~ .joystick { --stick-size: 112px; left: 12px; bottom: 12px; }
+  .world-frame .joystick-thumb { width: 50px; height: 50px; }
+}
+@media (max-width: 350px), (orientation: landscape) and (max-height: 340px) {
+  .world-frame .ability-controls { --ability-size: 56px; right: 10px; bottom: 10px; }
+  .world-frame .ability-controls ~ .joystick { --stick-size: 104px; left: 10px; bottom: 10px; }
+}

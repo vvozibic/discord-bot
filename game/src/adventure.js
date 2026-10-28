@@ -18,7 +18,7 @@ import { createSimulation, stepSimulation } from './run-simulation.js';
 import { castMagic, setMagicCharacter, magicStatus, staffOrigin, MAGIC_CAST_DURATION } from './magic-rules.js';
 import { canCollectCoin, exitStatus, patrolClockRate, trapPhase } from './challenge-rules.js';
 import { createReplayUI, formatTime } from './replay-ui.js';
-import { createLevelDirector, describeLevel } from './level-director.js';
+import { createLevelDirector } from './level-director.js';
 import { createTouchJoystick } from './touch-joystick.js';
 import { createDiscordService } from './discord-service.js';
 import { createMainMenu } from './main-menu.js';
@@ -348,7 +348,7 @@ elderResponse.addEventListener('click', () => {
   }
   if (claimElderShield(run, player)) {
     runTrace.elder();
-    tell(() => `Elder’s ward received: 1 shield. ${getControlsHelp().shieldAction} to activate for 3 seconds.`, 6500);
+    tell(() => `Shield received. ${getControlsHelp().shieldAction} for 3s protection.`, 3500);
     ui.updateHUD(); publishState(performance.now(), true);
   }
   elderDialog.close();
@@ -377,7 +377,7 @@ function startExpedition(config) {
   questLabel.textContent = simulation.challenge.mechanics.orderedCoins ? 'Find coin 1. Follow the numbered route.' : 'Find 6 coins. Return to the portal.';
   document.querySelector('.location-label').lastChild.textContent = ` ${expedition.layoutName.toUpperCase()}`;
   ui.setSession(expedition, run, config);
-  tell(() => `Level ${config.level} · ${describeLevel(config)}. ${run.shieldRequiresElder ? 'Talk to the elder for your only shield. ' : ''}${simulation.challenge.mechanics.orderedCoins ? 'Coins 1 → 6.' : 'Find 6 coins.'} ${run.dashEnabled ? getControlsHelp().dashAction : getControlsHelp().moveShort} Lab explains each rule.`, 8500);
+  tell(() => `${simulation.challenge.mechanics.orderedCoins ? 'Find coin 1.' : 'Find six coins.'} ${run.shieldRequiresElder ? 'Ask the elder for a shield.' : getControlsHelp().moveShort}`, 4500);
   resizeView();
   publishState(performance.now(), true);
   lastFrame = performance.now();
@@ -387,11 +387,11 @@ function startExpedition(config) {
 function useShield() {
   if (!player || ui.paused || won || lost) return;
   if (activateShield(run)) { runTrace.shield(); audio.shield(); tell('Shield active for 3 seconds.', 1700); ui.updateHUD(); }
-  else if (run.shieldRequiresElder && !run.elderGiftClaimed) tell('Find the elder and talk to receive your one shield.', 3500);
+  else if (run.shieldRequiresElder && !run.elderGiftClaimed) tell('Ask the elder for a shield.', 3500);
 }
 function useDash() {
   if (!player || ui.paused || won || lost) return;
-  if (activateDash(run)) { runTrace.dash(); audio.shield(); tell(`Dash burst! Keep moving. Recharges in ${run.dashCooldown} seconds.`, 1400); ui.updateHUD(); }
+  if (activateDash(run)) { runTrace.dash(); audio.shield(); tell(`Dash! Recharge: ${run.dashCooldown}s.`, 1400); ui.updateHUD(); }
 }
 function useMagic() {
   if (!player || ui.paused || won || lost) return;
@@ -432,7 +432,7 @@ function presentEvents(events) {
       damageFeedback.hit({ x:player.x, y:player.y, direction, damage, hazard:event.hazard.type, lethal:run.status === 'failed' });
       audio.hit(event.hazard.type, health.enabled && health.remainingHits <= 1 ? 1.25 : 1);
       const name = ({ trap:'Pulse trap', lava:'Overheated', crumble:'Collapsed tile', laser:'Laser', hunter:'Hunter drone' })[event.hazard.type] ?? enemyDefinitions[event.hazard.type]?.name ?? 'Hazard';
-      tell(`${name}${damage === null ? '' : ` · −${damage} HP · ${health.current} HP left`} · −8s · −100 pts`, 1800);
+      tell(`${name}${damage === null ? '' : ` · −${damage} HP`} · −8s · −100 pts`, 1800);
       ui.updateHUD();
       continue;
     }
@@ -451,7 +451,7 @@ function presentEvents(events) {
     });
     gathered = run.collected;
     if (item.bonus) { audio.bonus(); tell('Bonus coin! +200 points.'); }
-    else { audio.collect(gathered - 1); tell(() => gathered === run.itemCount ? (simulation.challenge.mechanics.exitWindow ? 'All six! Reach the gate and enter during its green window.' : 'Portal open! Return now or find the bonus coins for more points.') : gathered === 3 && simulation.challenge.mechanics.hunter ? `Coin 3 — the hunter is waking up! ${simulation.challenge.terrain.hunter?.smart ? 'Sidestep its amber dash line. ' : 'Keep moving. '}${simulation.magic?.character === 'wizard' ? `${getControlsHelp().magicAction} to fight back.` : getControlsHelp().dashAction}` : simulation.challenge.mechanics.orderedCoins ? `Coin ${gathered} found. Next: ${gathered + 1}. Alarm ×${patrolClockRate(simulation.challenge, run).toFixed(2)}.` : `Pulse coin found! ${run.itemCount - gathered} left to find.`); }
+    else { audio.collect(gathered - 1); tell(() => gathered === run.itemCount ? (simulation.challenge.mechanics.exitWindow ? 'All six! Enter the portal while green.' : 'Portal open! Return, or collect bonus coins.') : gathered === 3 && simulation.challenge.mechanics.hunter ? `Hunter waking! ${simulation.challenge.terrain.hunter?.smart ? 'Dodge the amber dash.' : 'Keep moving.'} ${simulation.magic?.character === 'wizard' ? getControlsHelp().magicAction + '.' : ''}` : simulation.challenge.mechanics.orderedCoins ? `Coin ${gathered} found. Next: ${gathered + 1}.` : `Coin found! ${run.itemCount - gathered} left.`); }
     countLabel.textContent = `${gathered} / ${run.itemCount}`;
     if (!item.bonus && gathered === run.itemCount) {
       audio.portalOpen();
@@ -824,7 +824,7 @@ canvas.addEventListener('pointerdown', event => {
   });
   if (tappedCoin) target = { x:tappedCoin.x, y:tappedCoin.y };
   if (tappedCoin && !canCollectCoin(simulation.challenge, tappedCoin, run)) {
-    tell(`Coin ${tappedCoin.id + 1} is locked. Follow the arrow to coin ${run.collected + 1} first.`); return;
+    tell(`Find coin ${run.collected + 1} first. Follow the arrow.`); return;
   }
   clearInput(); path = findPath(player, target); repathRequested = true;
   if (!path.length) tell(() => `You cannot walk there. ${getControlsHelp().groundAction}`);
