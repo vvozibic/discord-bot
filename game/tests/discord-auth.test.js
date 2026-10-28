@@ -5,6 +5,12 @@ import { createDiscordService, discordAvatarUrl } from '../src/discord-service.j
 
 const CLIENT = '1556624227212460092', USER = '123456789012345678', GUILD = '333333333333333333';
 function reply(body, status = 200) { return { ok:status < 400, status, json:async () => body }; }
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+const flush = () => new Promise(resolve => setImmediate(resolve));
 
 test('Discord OAuth verifies the app and server membership and derives the server profile', async () => {
   const calls = [];
@@ -99,6 +105,90 @@ test('cancelled login, SDK mismatch and unavailable configuration do not invent 
   assert.equal(mismatch.connected, false);
   assert.equal(mismatch.busy, false);
 });
+
+test('connection status follows authorization, server verification and client confirmation', async t => {
+  t.mock.timers.enable({ apis:['setTimeout'] });
+  const authorization = deferred(), verification = deferred(), authentication = deferred();
+  const service = createDiscordService({ fetchImpl:async url => url.endsWith('/config') ? reply({ configured:true }) : verification.promise });
+  await service.initialize();
+  service.setSdk({ commands:{ authorize:() => authorization.promise, authenticate:() => authentication.promise } }, CLIENT);
+  const connection = service.connect();
+  assert.equal(service.connectionStage, 'authorizing');
+  assert.match(service.connectionMessage, /authorization window/);
+  authorization.resolve({ code:'valid-code' }); await flush();
+  assert.equal(service.connectionStage, 'verifying');
+  assert.match(service.connectionMessage, /server access/);
+  verification.resolve(reply({ token:'app-token', accessToken:'access', profile:{ id:USER, name:'Alice' } })); await flush();
+  assert.equal(service.connectionStage, 'authenticating');
+  assert.match(service.connectionMessage, /Discord to confirm/);
+  assert.equal(service.connected, false, 'server verification alone must not connect the profile');
+  authentication.resolve({ user:{ id:USER } }); await connection;
+  assert.equal(service.connected, true);
+  assert.equal(service.busy, false);
+  assert.equal(service.connectionStage, '');
+  assert.equal(service.connectionMessage, '');
+  t.mock.timers.tick(60000);
+  assert.equal(service.connectionError, '', 'successful commands must cancel their deadlines');
+});
+
+for (const stage of ['authorize', 'authenticate']) {
+  test(`a stalled ${stage} releases Connect, ignores late replies and allows a verified retry`, async t => {
+    t.mock.timers.enable({ apis:['setTimeout'] });
+    const stale = deferred(), cleanup = deferred(), requests = [], changes = [];
+    let attempt = 0;
+    const retryUser = '223456789012345678';
+    const service = createDiscordService({ fetchImpl:async (url, options) => {
+      requests.push({ url, options });
+      if (url.endsWith('/config')) return reply({ configured:true });
+      if (options.method === 'DELETE') return cleanup.promise;
+      if (url.endsWith('/discord/session')) {
+        const code = JSON.parse(options.body).code;
+        return reply({ token:`app-${code}`, accessToken:`access-${code}`,
+          profile:{ id:code === 'retry' ? retryUser : USER, name:code === 'retry' ? 'Retry player' : 'Stale player' } });
+      }
+      return reply({ rows:[], total:0 });
+    } });
+    await service.initialize();
+    service.setSdk({ commands:{
+      authorize:() => {
+        attempt++;
+        if (attempt === 1 && stage === 'authorize') return stale.promise;
+        return Promise.resolve({ code:attempt === 1 ? 'stale' : 'retry' });
+      },
+      authenticate:() => attempt === 1 ? stale.promise : Promise.resolve({ user:{ id:retryUser } }),
+    } }, CLIENT);
+    service.subscribe(() => changes.push({ busy:service.busy, error:service.connectionError }));
+
+    const failed = assert.rejects(service.connect(), stage === 'authorize' ? /authorization did not respond/ : /did not confirm/);
+    await flush();
+    assert.equal(service.busy, true);
+    t.mock.timers.tick(stage === 'authorize' ? 60000 : 15000);
+    await failed;
+    assert.equal(service.busy, false, 'cleanup must not block retry even when DELETE stalls');
+    assert.equal(service.connected, false);
+    assert.equal(service.profile, null);
+    assert.equal(service.connectionStage, '');
+    assert.match(service.connectionError, /Connect profile.*reload/);
+    assert.equal(changes.at(-1).busy, false, 'the UI must be notified that Connect is available again');
+    assert.equal(changes.at(-1).error, service.connectionError);
+    const deletions = requests.filter(request => request.options.method === 'DELETE');
+    assert.equal(deletions.length, stage === 'authenticate' ? 1 : 0);
+    if (deletions.length) assert.equal(deletions[0].options.headers.Authorization, 'Bearer app-stale');
+
+    await service.connect();
+    assert.equal(service.connectionError, '');
+    assert.equal(service.profile.id, retryUser);
+    assert.equal(service.profile.name, 'Retry player');
+    const requestCount = requests.length;
+    stale.resolve(stage === 'authorize' ? { code:'stale' } : { user:{ id:USER } });
+    cleanup.resolve(reply({ error:'Session expired' }, 401));
+    await flush();
+    assert.equal(requests.length, requestCount, 'a late authorization must never exchange its code');
+    assert.equal(service.profile.id, retryUser, 'a late response or cleanup must not replace or disconnect the retry');
+    await service.leaderboard();
+    assert.equal(requests.at(-1).options.headers.Authorization, 'Bearer app-retry');
+  });
+}
 
 test('avatar rendering accepts only HTTPS Discord CDN URLs', () => {
   assert.equal(discordAvatarUrl('javascript:alert(1)'), '');

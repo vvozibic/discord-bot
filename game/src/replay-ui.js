@@ -114,6 +114,7 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     connectButton.title = !social.insideDiscord ? 'Open inside Discord to connect your profile' : !social.configured ? 'Profile connection will be available when the server is configured' : 'Show your Discord profile and join the shared ranking';
     document.querySelector('#player-profile').hidden = !profile;
     sharedConnect.disabled = !social.ready || social.busy;
+    sharedConnect.textContent = social.busy ? 'Connecting…' : 'Connect profile';
     if (labDialog.open) updateLab();
     if (!profile) return;
     document.querySelector('#player-name').textContent = profile.name;
@@ -187,9 +188,10 @@ export function createReplayUI({ onStart, onShield, onDash = () => {}, onMagic =
     sharedConnect.hidden = social.connected; sharedRefresh.hidden = !social.connected;
     status.hidden = false;
     if (!social.connected) {
-      status.textContent = !social.configured ? 'Shared rankings require a configured game server. Please contact an administrator.'
+      status.textContent = social.busy ? social.connectionMessage : social.connectionError
+        || (!social.configured ? 'Shared rankings require a configured game server. Please contact an administrator.'
         : !social.insideDiscord ? 'Launch the game inside Discord to show your name and compete.'
-        : 'Your name, avatar and verified results will be visible to other participants.';
+        : 'Your name, avatar and verified results will be visible to other participants.');
       return;
     }
     status.textContent = 'Loading shared ranking…'; sharedRefresh.disabled = true;

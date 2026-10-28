@@ -248,18 +248,20 @@ function refreshStartupStatus() {
   const busy = social.busy;
   const ready = social.ready && Boolean(coinArt);
   if (busy) startupProblem = '';
-  startupPanel.setAttribute('aria-busy', String(busy || (!startupProblem && (!ready || social.connected))));
-  startupConnect.hidden = !ready || busy || startupReloadOnly || (!startupProblem && social.connected);
+  const problem = startupProblem || social.connectionError;
+  startupPanel.setAttribute('aria-busy', String(busy || (!problem && (!ready || social.connected))));
+  startupConnect.hidden = !ready || busy || startupReloadOnly || (!problem && social.connected);
   startupConnect.disabled = !ready || busy || startupReloadOnly;
   startupConnect.textContent = social.connected ? 'Try again' : 'Connect profile';
-  startupReload.hidden = !startupProblem;
-  if (startupProblem) {
+  startupReload.hidden = !problem && !busy;
+  if (problem) {
     startupTitle.textContent = startupReloadOnly || !social.ready ? 'Unable to open Forest Trail' : social.connected ? 'Your trail could not start' : 'Connect your Discord profile';
-    startupMessage.textContent = startupProblem;
+    startupMessage.textContent = problem;
   } else if (busy) {
     canvas.dataset.phase = 'profile-connecting';
-    startupTitle.textContent = 'Connecting your profile';
-    startupMessage.textContent = 'Finish the Discord authorization window to open your trail. Your progress will be saved to your profile.';
+    startupTitle.textContent = social.connectionStage === 'verifying' ? 'Verifying your profile'
+      : social.connectionStage === 'authenticating' ? 'Confirming your profile' : 'Connecting your profile';
+    startupMessage.textContent = social.connectionMessage;
   } else if (social.connected) {
     canvas.dataset.phase = 'starting';
     startupTitle.textContent = 'Opening your trail';
