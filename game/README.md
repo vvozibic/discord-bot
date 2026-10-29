@@ -1,5 +1,26 @@
 # Forest Trail Discord Activity
 
+## Ten new maps — 29 October 2026
+
+The campaign has 14 authored maps: the original four and ten distinct environments. Every new environment has its own terrain painter, scenery silhouettes, architecture, keeper, gate, route network, and crossing geometry.
+
+| Environment | Visual identity |
+| --- | --- |
+| Desert Ruins | Wind-ridged sand, cacti, sandstone columns, sun temple, twin oases |
+| Ice Cavern | Snow and slate, ice spires, frozen observatory, glacial fissure |
+| Volcanic Isles | Faceted basalt, obsidian relics, forge temple, two molten basins |
+| Mushroom Marsh | Teal moss, luminous fungi, stilt hut, root boardwalks |
+| Neon District | Wet paving, arcade signs, vending cabinets, metro office and canal |
+| Lunar Outpost | Cratered regolith, solar arrays, antennas, dome bunker and crevasse |
+| Cloud Citadel | Floating marble terraces, sky columns, cloud chasms and air bridges |
+| Coral Sanctum | Aquamarine reef floor, coral fans, shell architecture and deep trenches |
+| Crystal Depths | Violet geodes, faceted crystals, rune causeways and prism shrine |
+| Clockwork Vault | Brass mechanisms, parquet floor, pendulums, clock tower and gear shafts |
+
+The new environments and original forest maps can appear at level 1; level 2 remains Rustworks. From level 3, all 14 maps enter the rotation, avoiding the two most recent maps. Retries keep their map and objective positions. Each map supports six main objectives, two bonuses, the keeper's shield, and up to four patrols under the existing gameplay rules. Desert, volcanic, cloud, and coral maps have a second basin and crossing. The original four map definitions are preserved for existing saved runs and ranked replays.
+
+## Hosting
+
 This directory is the complete Activity frontend and score API. The repository's
 root Dockerfile combines it with the existing Python bot in one Railway service.
 Runtime does not read files, services or tunnels on the developer's laptop.

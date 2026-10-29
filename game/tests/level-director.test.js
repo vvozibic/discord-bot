@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLevelDirector, describeLevel, PROGRESS_KEY } from '../src/level-director.js';
-import { createExpedition, SPAWN, PORTAL, findPath, clearSegment } from '../src/world.js';
+import { LAYOUTS, createExpedition, SPAWN, PORTAL, findPath, clearSegment } from '../src/world.js';
 
 function memoryStorage() {
   const data = new Map();
@@ -55,8 +55,56 @@ test('every level raises bounded pressure even after slow, damaged wins and avoi
     config.enemies.forEach(type => enemies.add(type)); recent.push(config.layoutId);
     assert.equal(director.complete(config, win(config, config.timeLimit - 1, config.maxHits - 1)), true);
   }
-  assert.equal(new Set(recent).size, 4);
+  assert.ok(recent.every(id => LAYOUTS.some(layout => layout.id === id)));
   assert.deepEqual([...enemies].sort(), ['scout','sentinel','wisp']);
+});
+
+test('every authored map joins the campaign and new maps resume and retry without changing routes', () => {
+  const originals = new Set(['crossing', 'waterside', 'switchback', 'rustworks']);
+  const selected = new Set(), checkedRetries = new Set();
+  for (let seed = 0; seed < 8; seed++) {
+    const storage = memoryStorage();
+    let director = createLevelDirector({ storage, seed:`map-expansion-${seed}` });
+    for (let level = 1; level <= 64; level++) {
+      const config = director.current();
+      selected.add(config.layoutId);
+      if (level === 1) assert.notEqual(LAYOUTS.find(layout => layout.id === config.layoutId).theme, 'industrial');
+      if (level === 2) assert.equal(config.layoutId, 'rustworks');
+      if (!originals.has(config.layoutId) && !checkedRetries.has(config.layoutId)) {
+        checkedRetries.add(config.layoutId);
+        assert.deepEqual(createLevelDirector({ storage }).current(), config, `${config.layoutId}: pending map survives reload`);
+        const originalRoute = createExpedition(config.seed, { layoutId:config.layoutId, hazardCount:config.enemies.length });
+        assert.equal(director.complete(config, { status:'failed' }), true);
+        const resumed = createLevelDirector({ storage }), retry = resumed.current();
+        for (const key of ['layoutId', 'seed', 'level', 'tier', 'variant', 'character']) {
+          assert.equal(retry[key], config[key], `${config.layoutId}: retry ${key}`);
+        }
+        assert.equal(retry.attempt, 1);
+        assert.deepEqual(createExpedition(retry.seed, { layoutId:retry.layoutId, hazardCount:retry.enemies.length }), originalRoute,
+          `${config.layoutId}: retry preserves objectives, bonuses and patrols`);
+        assert.deepEqual(createLevelDirector({ storage }).current(), retry, `${config.layoutId}: retry survives reload`);
+        assert.equal(resumed.complete(retry, win(retry)), true);
+        director = createLevelDirector({ storage });
+        assert.equal(director.current().level, level + 1);
+      } else {
+        assert.equal(director.complete(config, win(config)), true);
+      }
+    }
+  }
+  assert.deepEqual([...selected].sort(), LAYOUTS.map(({ id }) => id).sort());
+  assert.deepEqual([...checkedRetries].sort(), LAYOUTS.filter(({ id }) => !originals.has(id)).map(({ id }) => id).sort());
+});
+
+test('fresh campaigns can open in every new environment and reserve industrial Rustworks for level two', () => {
+  const openings = new Set();
+  for (let seed = 0; seed < 180; seed++) {
+    const director = createLevelDirector({ storage:null, seed:`biome-opening-${seed}` }), first = director.current();
+    openings.add(first.layoutId);
+    assert.notEqual(LAYOUTS.find(({ id }) => id === first.layoutId).theme, 'industrial');
+    assert.equal(director.complete(first, win(first)), true);
+    assert.equal(director.current().layoutId, 'rustworks');
+  }
+  assert.deepEqual([...openings].sort(), LAYOUTS.filter(({ theme }) => theme !== 'industrial').map(({ id }) => id).sort());
 });
 
 test('retries retain map, objectives, enemies and mechanics with at most ten extra seconds', () => {
