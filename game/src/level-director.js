@@ -3,7 +3,7 @@ import { CHALLENGE_RULES_VERSION } from './challenge-rules.js';
 
 export const PROGRESS_KEY = 'forest-trail-progress-v1';
 const MAP_IDS = LAYOUTS.map(layout => layout.id);
-const FOREST_IDS = LAYOUTS.filter(layout => layout.theme === 'forest').map(layout => layout.id);
+const OPENING_IDS = LAYOUTS.filter(layout => layout.theme !== 'industrial').map(layout => layout.id);
 const LEGACY_SECOND_LEVEL = Object.freeze({ name:'Foundry patrol', timeLimit:180, enemies:['wisp','wisp'], speed:.9, shields:3 });
 const LEGACY_FACTORY_NAMES = ['Quiet shift','Factory watch','Factory patrol','Hazard shift','Heavy patrol','Core alarm'];
 const LEGACY_SETTINGS = [
@@ -120,7 +120,7 @@ export function createLevelDirector({ storage = storageDefault(), seed = newSeed
     }
     if (state.active?.status !== 'ready') {
       const retryMap = state.active?.status === 'failed' ? state.active.layoutId : null;
-      const pool = state.level === 1 ? FOREST_IDS : MAP_IDS;
+      const pool = state.level === 1 ? OPENING_IDS : MAP_IDS;
       const candidates = pool.filter(id => !state.recentMaps.includes(id));
       const layoutId = retryMap ?? (state.level === 2 ? 'rustworks' : candidates[hash(`${state.seed}:${state.level}`) % candidates.length]);
       state.active = {

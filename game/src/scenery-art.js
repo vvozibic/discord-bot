@@ -1,6 +1,7 @@
 import { WORLD, POND, BRIDGE, PATHS, HUT, TREES, LOGS, ROCKS, getCurrentLayoutId, getCurrentTheme } from './world.js';
 import { rect, hash, texture } from './pixel-utils.js';
 import { createIndustrialArt } from './industrial-art.js';
+import { BIOME_THEMES, createBiomeArt } from './biome-art.js';
 
 const onPath = (x, y, margin = 0) => PATHS.some(([px, py, w, h]) =>
   x >= px - margin && x < px + w + margin && y >= py - margin && y < py + h + margin);
@@ -347,6 +348,9 @@ let sharedTrees, sharedHut;
 export function createSceneryArt() {
   const layoutId = getCurrentLayoutId();
   if (artCache.has(layoutId)) return artCache.get(layoutId);
+  if (BIOME_THEMES.includes(getCurrentTheme())) {
+    const art = createBiomeArt(getCurrentTheme()); artCache.set(layoutId, art); return art;
+  }
   if (getCurrentTheme() === 'industrial') {
     const art = createIndustrialArt(); artCache.set(layoutId, art); return art;
   }

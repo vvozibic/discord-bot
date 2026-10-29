@@ -10,7 +10,7 @@ import { createGameApi } from '../server/api.js';
 import { createSqliteGameStore } from '../server/game-store.js';
 import { openPostgresGameStore } from '../server/postgres-store.js';
 import { recordedVictory } from './fixtures/ranked-run.js';
-import { withSeededProfiles } from './fixtures/seeded-store.js';
+import { CHALLENGE_RULES_VERSION } from '../src/challenge-rules.js';
 import { DEFAULT_EQUIPPED } from '../src/rewards.js';
 
 const USERS = {alice:'123456789012345678',bob:'223456789012345678'}, GUILD='333333333333333333';
@@ -19,7 +19,20 @@ const empty = {unlocked:[],equipped:DEFAULT_EQUIPPED};
 const styled = {palette:'moonlight',trail:'spark',badge:'hunter'};
 
 async function fixture(options) {
-  const store = withSeededProfiles(options.databaseUrl ? await openPostgresGameStore(options.databaseUrl) : createSqliteGameStore(options.path),'rewards-4');
+  const database = options.databaseUrl ? await openPostgresGameStore(options.databaseUrl) : createSqliteGameStore(options.path);
+  const store = { ...database, async upsertProfile(board, profile) {
+    await database.upsertProfile(board, profile);
+    await database.transaction(board, profile.id, async tx => {
+      const row = await tx.profile();
+      // Keep this verified achievement scenario on its original clear route,
+      // independent of how many maps the campaign rotation contains.
+      if (row && row.progress == null) await tx.saveProgress(JSON.stringify({
+        version:1, seed:'rewards-4', level:1, skill:0, streak:0, attempt:0, recentMaps:[],
+        active:{ level:1, layoutId:'crossing', tier:0, attempt:0, status:'ready',
+          rulesVersion:CHALLENGE_RULES_VERSION, character:'wizard', variant:'pursuit' },
+      }));
+    });
+  } };
   const faultableStore = { ...store, transaction:(board,userId,action) => store.transaction(board,userId,tx => action({ ...tx,
     addScore:(...args) => { if (options.failScores) throw new Error('Simulated persistence failure'); return tx.addScore(...args); },
   })) };
@@ -53,6 +66,7 @@ for (const backend of ['sqlite','postgres']) test(`${backend}: verified achievem
       assert.equal((await f.request('/rewards',{token:alice.token,method:'PUT',body:{equipped:styled}})).status,400);
       assert.equal((await f.request('/rewards',{token:alice.token,method:'PUT',body:{equipped:DEFAULT_EQUIPPED,unlocked:all}})).status,400);
       const plan=(await f.request('/runs',{token:alice.token,body:{}})).body;
+      assert.equal(plan.config.layoutId,'crossing');
       const fabricated=await f.request('/runs/finish',{token:alice.token,body:{ticket:plan.ticket,trace:[],hits:0,bonuses:2,hunterDefeated:true}});
       assert.equal(fabricated.status,422);
       assert.deepEqual((await f.request('/rewards',{token:alice.token})).body,empty);

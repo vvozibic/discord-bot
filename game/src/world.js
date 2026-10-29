@@ -1,3 +1,5 @@
+import { BIOME_MAPS } from './biome-maps.js';
+
 export const TILE = 16;
 export const PLAYER_SPEED = 144;
 export const WORLD = { width: 768, height: 512 };
@@ -72,10 +74,11 @@ const definitions = {
     logs: [{ x:176, y:288, width:48, height:12 }, { x:536, y:352, width:48, height:12 }],
     collectibles: points([[152,200],[280,232],[456,208],[616,304],[360,368],[688,416]]),
   },
+  ...BIOME_MAPS,
 };
 
 export const LAYOUTS = Object.freeze(Object.entries(definitions).map(([id, { name, theme = 'forest' }]) => Object.freeze({ id, name, theme })));
-export let SPAWN, PORTAL, POND, BRIDGE, HUT, GUARDIAN, ROCKS, TREES, LOGS, COLLECTIBLES, PATHS;
+export let SPAWN, PORTAL, POND, BRIDGE, BASINS, HUT, GUARDIAN, ROCKS, TREES, LOGS, COLLECTIBLES, PATHS;
 let currentLayoutId, SOLIDS = [], walkability = null;
 const siteCache = new Map();
 
@@ -88,6 +91,8 @@ export function configureWorld(layoutId = 'crossing') {
   currentLayoutId = layoutId;
   SPAWN = { ...source.spawn }; PORTAL = { ...source.portal };
   POND = { ...source.pond }; BRIDGE = { ...source.bridge };
+  BASINS = [{ ...POND, bridge:{ ...BRIDGE } },
+    ...(source.basins ?? []).map(basin => ({ ...basin, bridge:{ ...basin.bridge } }))];
   HUT = { ...source.hut }; GUARDIAN = { ...source.guardian };
   PATHS = source.paths.map(path => [...path]); ROCKS = source.rocks.map(rock => [...rock]);
   TREES = [...borderTrees, ...source.trees].map(tree => ({ ...tree }));
@@ -98,6 +103,10 @@ export function configureWorld(layoutId = 'crossing') {
     { x: POND.x, y: POND.y, width: BRIDGE.x - POND.x, height: POND.height, water:true },
     { x: BRIDGE.x + BRIDGE.width, y: POND.y,
       width: POND.x + POND.width - BRIDGE.x - BRIDGE.width, height: POND.height, water:true },
+    ...BASINS.slice(1).flatMap(({ x, y, width, height, bridge }) => [
+      { x, y, width:bridge.x - x, height, water:true },
+      { x:bridge.x + bridge.width, y, width:x + width - bridge.x - bridge.width, height, water:true },
+    ]),
     ...TREES.map(({ x, y }) => ({ x: x - 6, y: y + 6, width: 12, height: 9 })),
   ];
   walkability = null;

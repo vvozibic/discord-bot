@@ -1,13 +1,22 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  WORLD, LAYOUTS, SPAWN, PORTAL, POND, BRIDGE, HUT, TREES, PATHS,
+  WORLD, LAYOUTS, SPAWN, PORTAL, POND, BRIDGE, BASINS, HUT, GUARDIAN, TREES, PATHS, COLLECTIBLES,
   configureWorld, getCurrentLayoutId, createExpedition, canStand, findPath, clearSegment, followPath,
 } from '../src/world.js';
 
 afterEach(() => configureWorld());
 
-test('four authored layouts change actual routes, water, landmarks, and obstacle arrangements', () => {
+const NEW_MAP_IDS = ['desert-ruins', 'ice-cavern', 'volcanic-isles', 'mushroom-marsh', 'neon-district',
+  'lunar-outpost', 'cloud-citadel', 'coral-sanctum', 'crystal-depths', 'clockwork-vault'];
+
+test('ten new authored maps retain the original four and provide distinct playable geometry', () => {
+  const originals = ['crossing', 'waterside', 'switchback', 'rustworks'];
+  assert.equal(LAYOUTS.length, 14);
+  assert.deepEqual(LAYOUTS.map(({ id }) => id).sort(), [...originals, ...NEW_MAP_IDS].sort());
+  const environments = LAYOUTS.filter(({ id }) => NEW_MAP_IDS.includes(id));
+  assert.equal(new Set(environments.map(({ theme }) => theme)).size, 10);
+  for (const { id, theme } of environments) assert.equal(theme, id, `${id}: distinct environment artwork`);
   const geometry = [];
   for (const { id } of LAYOUTS) {
     configureWorld(id);
@@ -18,14 +27,86 @@ test('four authored layouts change actual routes, water, landmarks, and obstacle
     assert.ok(clearSegment({ x: BRIDGE.x + BRIDGE.width / 2, y: BRIDGE.y },
       { x: BRIDGE.x + BRIDGE.width / 2, y: BRIDGE.y + BRIDGE.height }));
     assert.ok(findPath(SPAWN, PORTAL).length);
+    assert.equal(COLLECTIBLES.length, 6);
+    for (const destination of [...COLLECTIBLES, { x:GUARDIAN.x, y:GUARDIAN.y + 25 }, PORTAL]) {
+      assert.ok(canStand(destination.x, destination.y), `${id}: blocked landmark ${JSON.stringify(destination)}`);
+      const path = findPath(SPAWN, destination);
+      assert.ok(path.length, `${id}: unreachable landmark ${JSON.stringify(destination)}`);
+      let previous = SPAWN;
+      for (const waypoint of path) {
+        assert.ok(clearSegment(previous, waypoint), `${id}: blocked landmark route`);
+        previous = waypoint;
+      }
+      assert.deepEqual(path.at(-1), destination);
+    }
     geometry.push({ pond: { ...POND }, hut: { ...HUT }, trees: TREES.map(tree => ({ ...tree })), paths: PATHS.map(path => [...path]) });
   }
-  assert.equal(LAYOUTS.length, 4);
   for (const feature of ['pond', 'hut', 'trees', 'paths']) {
-    assert.equal(new Set(geometry.map(layout => JSON.stringify(layout[feature]))).size, 4, `${feature} should differ on each map`);
+    assert.equal(new Set(geometry.map(layout => JSON.stringify(layout[feature]))).size, LAYOUTS.length, `${feature} should differ on each map`);
   }
   assert.deepEqual(WORLD, { width: 768, height: 512 });
   assert.throws(() => configureWorld('missing-layout'), RangeError);
+});
+
+test('every basin blocks both banks while its bridge remains continuously traversable', () => {
+  let secondaryBasins = 0;
+  for (const { id } of LAYOUTS) {
+    configureWorld(id);
+    secondaryBasins += BASINS.length - 1;
+    for (const [index, basin] of BASINS.entries()) {
+      const { x, y, width, height, bridge } = basin;
+      const centerY = y + height / 2, bridgeX = bridge.x + bridge.width / 2;
+      assert.equal(canStand((x + bridge.x) / 2, centerY), false, `${id}/${index}: left basin bank`);
+      assert.equal(canStand((bridge.x + bridge.width + x + width) / 2, centerY), false, `${id}/${index}: right basin bank`);
+      assert.ok(clearSegment({ x:bridgeX, y:bridge.y }, { x:bridgeX, y:bridge.y + bridge.height }),
+        `${id}/${index}: bridge crossing`);
+      const player = { x:bridgeX, y:bridge.y }, path = [{ x:bridgeX, y:bridge.y + bridge.height }];
+      let steps = 0;
+      while (path.length && steps++ < 300) {
+        assert.ok(followPath(player, path, 1 / 60), `${id}/${index}: crossing movement stopped`);
+        assert.ok(canStand(player.x, player.y));
+      }
+      assert.equal(path.length, 0, `${id}/${index}: incomplete crossing`);
+    }
+  }
+  assert.ok(secondaryBasins >= 3, 'several environments have additional crossings');
+});
+
+test('reconfiguring the world restores independent basin and nested bridge definitions', () => {
+  for (const id of NEW_MAP_IDS) {
+    configureWorld(id);
+    const saved = structuredClone(BASINS);
+    BASINS[0].x = -100;
+    BASINS[0].bridge.width = 1000;
+    if (BASINS.length > 1) { BASINS[1].y = -100; BASINS[1].bridge.x = -100; }
+    BASINS.push({ x:-100, y:-100, width:1000, height:1000, bridge:{} });
+    configureWorld('crossing');
+    assert.equal(BASINS.length, 1);
+    configureWorld(id);
+    assert.deepEqual(BASINS, saved, `${id}: caller mutations must not alter authored basin geometry`);
+  }
+});
+
+test('the ten new maps allow continuous collision-safe movement through every authored landmark', () => {
+  for (const id of NEW_MAP_IDS) {
+    configureWorld(id);
+    const player = { ...SPAWN };
+    for (const destination of [...COLLECTIBLES, { x:GUARDIAN.x, y:GUARDIAN.y + 25 }, PORTAL]) {
+      let path = findPath(player, destination), steps = 0, repaths = 0;
+      while (Math.hypot(player.x - destination.x, player.y - destination.y) >= .01 && steps++ < 1800) {
+        // A further click can replan a route when an obstacle corner stops a step.
+        if (!path.length) {
+          assert.ok(++repaths <= 6, `${id}: landmark route repeatedly stopped`);
+          path = findPath(player, destination);
+          assert.ok(path.length, `${id}: landmark lost its reachable approach`);
+        }
+        followPath(player, path, 1 / 60);
+        assert.ok(canStand(player.x, player.y), `${id}: movement entered a solid`);
+      }
+      assert.ok(Math.hypot(player.x - destination.x, player.y - destination.y) < .01,
+        `${id}: could not walk to ${JSON.stringify(destination)}`);
+    }
+  }
 });
 
 test('shared seeds reproduce layouts, objectives, bonuses and hazard timings without shared state', () => {
@@ -41,23 +122,23 @@ test('shared seeds reproduce layouts, objectives, bonuses and hazard timings wit
   assert.deepEqual(createExpedition(12345), createExpedition(12345));
 });
 
-test('new seeds vary objective positions and automatically select all four layouts', () => {
+test('new seeds vary objective positions and automatically select every authored layout', () => {
   const layouts = new Set(), placements = new Set();
-  for (let seed = 0; seed < 90; seed++) {
+  for (let seed = 0; seed < 180; seed++) {
     const expedition = createExpedition(seed);
     layouts.add(expedition.layoutId);
     placements.add(JSON.stringify(expedition.items));
   }
-  assert.equal(layouts.size, 4);
-  assert.ok(placements.size > 85);
+  assert.deepEqual([...layouts].sort(), LAYOUTS.map(({ id }) => id).sort());
+  assert.ok(placements.size > 170);
   for (const { id } of LAYOUTS) {
     assert.ok(new Set(Array.from({ length: 20 }, (_, seed) => JSON.stringify(createExpedition(seed, { layoutId: id }).items))).size > 18);
   }
 });
 
-test('seeded objectives stay readable, spaced apart and continuously reachable on every layout', () => {
+test('thirty seeds on every map support readable reachable objectives and four clear patrols', () => {
   for (const { id } of LAYOUTS) for (let seed = 0; seed < 30; seed++) {
-    const expedition = createExpedition(seed, { layoutId: id });
+    const expedition = createExpedition(seed, { layoutId: id, hazardCount:4 });
     assert.equal(expedition.items.length, 6);
     assert.equal(expedition.bonuses.length, 2);
     const objectives = [...expedition.items, ...expedition.bonuses];
@@ -82,7 +163,7 @@ test('seeded objectives stay readable, spaced apart and continuously reachable o
       assert.ok(hazard.period >= 6 && hazard.period <= 10);
       assert.ok(hazard.phase >= 0 && hazard.phase < 2 * Math.PI);
     }
-    assert.equal(expedition.hazards.length, 2);
+    assert.equal(expedition.hazards.length, 4, `${id}/${seed}: missing patrol`);
   }
 });
 
