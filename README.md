@@ -41,6 +41,28 @@ disabled. It creates a new message and does not edit or remove the old MEE6 FAQ.
 The existing `/faq` dropdown command remains available. Neither importing this
 module nor bot startup publishes the new FAQ.
 
+### Editing the posted FAQ in Discord
+
+After posting, right-click the FAQ message and choose **Apps → Edit FAQ**. The
+private form is prefilled with the current title and text, including Markdown
+links and the custom emoji. Submitting the form edits the same message; its ID,
+link and reactions remain intact. Cancelling or letting the form expire changes
+nothing. Text edits preserve the current image and attachment.
+
+Alternatively, use `/faqedit message:<message link or ID>`. To replace the image,
+attach a PNG, JPEG, WebP or GIF of up to 8 MB with the optional `image` parameter,
+then submit the editing form. The bot replaces the FAQ's single image attachment
+in the existing post. Messages with additional attachments are not replaced.
+
+Editing requires `FAQ_PUBLISH_ENABLED=true`, Manage Messages permission in the
+configured FAQ channel, and this bot as the original author. The old MEE6 post
+cannot be edited through these commands. Permissions, author and current content
+are checked again on save; stale forms cannot silently overwrite a later edit.
+The bot needs View Channel, Read Message History and Embed Links, plus Attach
+Files when replacing the image. It never deletes/reposts the FAQ as an edit.
+Server edits do not modify the source JSON in GitHub; existing posts retain their
+edits across bot restarts because startup does not rewrite them.
+
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in your Discord token.
