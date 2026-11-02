@@ -133,7 +133,7 @@ No Members or Presence privileged intent is requested by this change.
 
 When Discord posts a native join notification (`MessageType.new_member`) in
 `1401891894329479278`, the bot welcomes that notification's author in
-`1421187164187791381`. One message contains:
+`👋│welcome` (`1566815311255048282`) in Community lounge. One message contains:
 
 - `Hey, **display name**, welcome to Mindo AI` using the joining member's server
   nickname, falling back to their global display name or username. The name is
@@ -143,8 +143,9 @@ When Discord posts a native join notification (`MessageType.new_member`) in
   avatar inside the neon ring and `Welcome, display name` on the cabinet. Server
   avatars and Discord default avatars are supported, and long names fit the text
   area automatically. If the avatar cannot be downloaded, the card uses initials.
-- A `Next stop: #introductions` line that links to that server channel when it
-  exists. The same wording appears in the card artwork.
+- A `Next stop: #general-chat` subtitle in the card artwork. The accompanying
+  text uses `<#1422969379062284389>` to link directly to the destination channel,
+  independently of its name, decorative prefix, or local channel cache.
 
 The arcade background is bundled as `assets/mindo-welcome-arcade.png`; its image
 editing prompt is saved alongside it. The renderer uses the bundled Noto Sans font
@@ -158,7 +159,7 @@ The channel IDs work without additional configuration and can be overridden:
 
 ```dotenv
 WELCOME_SOURCE_CHANNEL_ID=1401891894329479278
-WELCOME_TARGET_CHANNEL_ID=1421187164187791381
+WELCOME_TARGET_CHANNEL_ID=1566815311255048282
 ```
 
 Set either ID to `0` to disable welcomes. The destination must be a text channel

@@ -14,7 +14,7 @@ from member_welcome import DEFAULT_IMAGE_PATH, MemberWelcomeRelay, WELCOME_IMAGE
 
 
 SOURCE_CHANNEL_ID = 1401891894329479278
-TARGET_CHANNEL_ID = 1421187164187791381
+TARGET_CHANNEL_ID = 1566815311255048282
 MEMBER_ID = 123456789012345678
 
 
@@ -96,7 +96,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         components = kwargs["view"].to_components()
         self.assertEqual(
             components[0]["content"],
-            "Hey, **new\\_member**, welcome to Mindo AI\nNext stop: #introductions",
+            "Hey, **new\\_member**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
         )
         self.assertEqual(
             components[1]["items"][0]["media"]["url"],
@@ -143,7 +143,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         components = self.target.send.call_args.kwargs["view"].to_components()
         self.assertEqual(
             components[0]["content"],
-            "Hey, **Server nickname**, welcome to Mindo AI\nNext stop: #introductions",
+            "Hey, **Server nickname**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
         )
         self.assertIn(
             f"/guilds/{self.guild.id}/users/{MEMBER_ID}/avatars/guild_avatar",
@@ -177,7 +177,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
                     components = self.target.send.call_args.kwargs["view"].to_components()
                     self.assertEqual(
                         components[0]["content"],
-                        f"Hey, **{expected_name}**, welcome to Mindo AI\nNext stop: #introductions",
+                        f"Hey, **{expected_name}**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
                     )
 
     async def test_display_name_cannot_inject_markdown_or_mentions(self):
@@ -192,17 +192,27 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             greeting,
             r"Hey, **\*\*Nick\*\* <@"
-            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI\nNext stop: #introductions",
+            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
         )
         self.assertEqual(kwargs["allowed_mentions"].to_dict(), {"parse": []})
 
-    async def test_introductions_channel_is_linked_when_present(self):
-        self.guild.text_channels = [SimpleNamespace(name="introductions", id=987654321)]
+    async def test_next_stop_links_to_exact_id_without_relying_on_channel_name_or_cache(self):
+        for index, channels in enumerate([
+            [],
+            [SimpleNamespace(name="renamed-chat", id=1422969379062284389)],
+            [SimpleNamespace(name="general-chat", id=987654321)],
+        ]):
+            with self.subTest(channels=channels):
+                self.guild.text_channels = channels
 
-        self.assertTrue(await self.relay.handle_message(self.message()))
+                self.assertTrue(
+                    await self.relay.handle_message(
+                        self.message(id=1422222222222222223 + index)
+                    )
+                )
 
-        components = self.target.send.call_args.kwargs["view"].to_components()
-        self.assertIn("Next stop: <#987654321>", components[0]["content"])
+                components = self.target.send.call_args.kwargs["view"].to_components()
+                self.assertIn("Next stop: <#1422969379062284389>", components[0]["content"])
 
     async def test_avatar_download_failure_still_sends_a_personalized_card(self):
         attachment_bytes = []
