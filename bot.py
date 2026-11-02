@@ -21,6 +21,8 @@ from member_welcome import MemberWelcomeRelay
 from support_panel import SupportPanel, register_support_commands
 from game_launcher import ForestTrailView, register_game_command
 from discord_runtime import build_bot_intents, require_message_content
+from faq_announcement import register_faq_command
+from faq_editor import register_faq_editor
 import database
 import x_comment_raffle
 from datetime import datetime, timezone, timedelta
@@ -973,6 +975,8 @@ intents = build_bot_intents()
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
+register_faq_command(tree)
+register_faq_editor(tree)
 register_game_command(tree)
 support_panel = SupportPanel.from_env()
 register_support_commands(tree, support_panel)

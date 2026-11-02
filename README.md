@@ -10,6 +10,59 @@ A Discord bot that listens in `#verify`, validates a submission with an image + 
 - Enqueues jobs to Redis and consumes results (stub worker included).
 - Assigns a role returned by the worker and posts an embed with details.
 
+## Document FAQ preparation
+
+`faq_content.json` contains the six questions from the supplied
+[Google document](https://docs.google.com/document/d/1oQtNz0MYkiFoE5S2nLGFa1sbtubVtngLfkuYytSd-Hk/edit).
+The document's image is bundled as `assets/mindo-faq-document.png`. This is a
+snapshot; document changes are not fetched automatically. The opening answer is
+condensed for readability; the remaining answers and channel references follow
+the document. The new static FAQ has no dropdowns.
+
+Export a local preview without logging into Discord or starting the bot:
+
+```bash
+python faq_announcement.py --preview-dir /path/to/faq-preview
+```
+
+The command writes a standalone `faq-preview.html` and `faq-payload.json`.
+It never sends messages, even when Discord credentials are present.
+
+After a separately approved deployment, `/faqpost` shows a private preview to a
+member with Manage Messages permission. Public posting stays off by default:
+`FAQ_PUBLISH_ENABLED=false`. Publishing later requires both changing that setting
+to `true` and explicitly invoking `/faqpost publish:true`. The destination is
+`FAQ_CHANNEL_ID=1438216307618222121` in `FAQ_GUILD_ID=1400787114333044887`;
+it is never inferred from the channel where the command was invoked.
+
+The publisher checks the caller's destination permissions and the bot's View
+Channel, Send Messages, Embed Links and Attach Files permissions. Mentions are
+disabled. It creates a new message and does not edit or remove the old MEE6 FAQ.
+The existing `/faq` dropdown command remains available. Neither importing this
+module nor bot startup publishes the new FAQ.
+
+### Editing the posted FAQ in Discord
+
+After posting, right-click the FAQ message and choose **Apps → Edit FAQ**. The
+private form is prefilled with the current title and text, including Markdown
+links and the custom emoji. Submitting the form edits the same message; its ID,
+link and reactions remain intact. Cancelling or letting the form expire changes
+nothing. Text edits preserve the current image and attachment.
+
+Alternatively, use `/faqedit message:<message link or ID>`. To replace the image,
+attach a PNG, JPEG, WebP or GIF of up to 8 MB with the optional `image` parameter,
+then submit the editing form. The bot replaces the FAQ's single image attachment
+in the existing post. Messages with additional attachments are not replaced.
+
+Editing requires `FAQ_PUBLISH_ENABLED=true`, Manage Messages permission in the
+configured FAQ channel, and this bot as the original author. The old MEE6 post
+cannot be edited through these commands. Permissions, author and current content
+are checked again on save; stale forms cannot silently overwrite a later edit.
+The bot needs View Channel, Read Message History and Embed Links, plus Attach
+Files when replacing the image. It never deletes/reposts the FAQ as an edit.
+Server edits do not modify the source JSON in GitHub; existing posts retain their
+edits across bot restarts because startup does not rewrite them.
+
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in your Discord token.

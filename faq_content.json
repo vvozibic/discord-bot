@@ -1,0 +1,33 @@
+{
+  "source_url": "https://docs.google.com/document/d/1oQtNz0MYkiFoE5S2nLGFa1sbtubVtngLfkuYytSd-Hk/edit",
+  "source_date": "2026-11-02",
+  "title": "<:004:1420713409346928650> MindoAI Quick Q&A",
+  "color": 65433,
+  "image": "assets/mindo-faq-document.png",
+  "questions": [
+    {
+      "question": "What is MindoAI?",
+      "answer": "MindoAI connects Web3 projects with creators and KOLs through:\n\n**Performance Leaderboards:** creators earn rewards for results their content drives, not views or likes.\n**KOL Rounds:** KOLs access private rounds of partner projects."
+    },
+    {
+      "question": "Where is MindoAI going? Is there a roadmap?",
+      "answer": "A public roadmap hasn't been shared yet. We'd rather publish it once the next steps are locked in than post dates that keep changing. When it's ready, it goes to #announcements first."
+    },
+    {
+      "question": "I'm new. Where do I start?",
+      "answer": "1. Turn on the MND tag.\n2. Check #announcements for what's running this week.\n3. Say hi in [#general](https://discord.com/channels/1400787114333044887/1400848157436280943). The community is happy to help."
+    },
+    {
+      "question": "How do I earn roles?",
+      "answer": "Check [#roles](https://discord.com/channels/1400787114333044887/1410190201653039206)."
+    },
+    {
+      "question": "When is TGE?",
+      "answer": "Soon."
+    },
+    {
+      "question": "How do I stay safe?",
+      "answer": "Only open links posted in our official channels: [#announcements](https://discord.com/channels/1400787114333044887/1400787115008331868) here and @MindoAI on X. Don't click links from DMs, replies or other servers, even if they look official. Got a suspicious link? Report it to a mod."
+    }
+  ]
+}
