@@ -135,7 +135,10 @@ When Discord posts a native join notification (`MessageType.new_member`) in
 `1401891894329479278`, the bot welcomes that notification's author in
 `1421187164187791381`. One message contains:
 
-- `Hey , @member, welcome to Mindo AI` with an actual mention of the joining user.
+- `Hey, **display name**, welcome to Mindo AI` using the joining member's server
+  nickname, falling back to their global display name or username. The name is
+  escaped text, so it stays visible when Discord cannot resolve a mention and
+  does not ping anyone.
 - The member's current Discord display avatar as a thumbnail (including the
   server avatar or Discord's default avatar when appropriate).
 - The supplied Mindo Poker image, bundled as `assets/mindo-welcome.png`, below
