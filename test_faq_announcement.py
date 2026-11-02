@@ -32,7 +32,7 @@ class FAQContentTests(unittest.TestCase):
         ):
             self.assertIn(f"**{question}**\n", embed.description)
         self.assertIn("**When is TGE?**\nSoon.", embed.description)
-        self.assertIn("1. Turn on the MND tag and claim your role.", embed.description)
+        self.assertIn("1. Turn on the MND tag.", embed.description)
         self.assertIn("**KOL Rounds:**", embed.description)
         self.assertLessEqual(len(embed.description), 4096)
         self.assertLessEqual(len(embed), 6000)
