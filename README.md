@@ -15,8 +15,9 @@ A Discord bot that listens in `#verify`, validates a submission with an image + 
 `faq_content.json` contains the six questions from the supplied
 [Google document](https://docs.google.com/document/d/1oQtNz0MYkiFoE5S2nLGFa1sbtubVtngLfkuYytSd-Hk/edit).
 The document's image is bundled as `assets/mindo-faq-document.png`. This is a
-snapshot; document changes are not fetched automatically. Wording and channel
-references are preserved, and the new static FAQ has no dropdowns.
+snapshot; document changes are not fetched automatically. The opening answer is
+condensed for readability; the remaining answers and channel references follow
+the document. The new static FAQ has no dropdowns.
 
 Export a local preview without logging into Discord or starting the bot:
 

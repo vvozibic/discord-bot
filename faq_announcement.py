@@ -43,7 +43,7 @@ class FAQSettings:
 
 
 def build_faq(content_path=CONTENT_PATH):
-    """Read the approved document snapshot and require its bundled artwork."""
+    """Read the FAQ snapshot and require its bundled artwork."""
     path = Path(content_path)
     content = json.loads(path.read_text(encoding="utf-8"))
     image = (path.parent / content["image"]).resolve()
