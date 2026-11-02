@@ -20,6 +20,7 @@ import message_audit
 from member_welcome import MemberWelcomeRelay
 from game_launcher import ForestTrailView, register_game_command
 from discord_runtime import build_bot_intents, require_message_content
+from faq_announcement import register_faq_command
 import database
 import x_comment_raffle
 from datetime import datetime, timezone, timedelta
@@ -972,6 +973,7 @@ intents = build_bot_intents()
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
+register_faq_command(tree)
 register_game_command(tree)
 member_welcome_relay = MemberWelcomeRelay(
     source_channel_id=config.WELCOME_SOURCE_CHANNEL_ID,

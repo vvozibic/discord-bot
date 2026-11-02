@@ -10,6 +10,36 @@ A Discord bot that listens in `#verify`, validates a submission with an image + 
 - Enqueues jobs to Redis and consumes results (stub worker included).
 - Assigns a role returned by the worker and posts an embed with details.
 
+## Document FAQ preparation
+
+`faq_content.json` contains the six questions from the supplied
+[Google document](https://docs.google.com/document/d/1oQtNz0MYkiFoE5S2nLGFa1sbtubVtngLfkuYytSd-Hk/edit).
+The document's image is bundled as `assets/mindo-faq-document.png`. This is a
+snapshot; document changes are not fetched automatically. Wording and channel
+references are preserved, and the new static FAQ has no dropdowns.
+
+Export a local preview without logging into Discord or starting the bot:
+
+```bash
+python faq_announcement.py --preview-dir /path/to/faq-preview
+```
+
+The command writes a standalone `faq-preview.html` and `faq-payload.json`.
+It never sends messages, even when Discord credentials are present.
+
+After a separately approved deployment, `/faqpost` shows a private preview to a
+member with Manage Messages permission. Public posting stays off by default:
+`FAQ_PUBLISH_ENABLED=false`. Publishing later requires both changing that setting
+to `true` and explicitly invoking `/faqpost publish:true`. The destination is
+`FAQ_CHANNEL_ID=1438216307618222121` in `FAQ_GUILD_ID=1400787114333044887`;
+it is never inferred from the channel where the command was invoked.
+
+The publisher checks the caller's destination permissions and the bot's View
+Channel, Send Messages, Embed Links and Attach Files permissions. Mentions are
+disabled. It creates a new message and does not edit or remove the old MEE6 FAQ.
+The existing `/faq` dropdown command remains available. Neither importing this
+module nor bot startup publishes the new FAQ.
+
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in your Discord token.
