@@ -133,7 +133,7 @@ No Members or Presence privileged intent is requested by this change.
 
 When Discord posts a native join notification (`MessageType.new_member`) in
 `1401891894329479278`, the bot welcomes that notification's author in
-`1421187164187791381`. One message contains:
+`👋│welcome` (`1566815311255048282`) in Community lounge. One message contains:
 
 - `Hey, **display name**, welcome to Mindo AI` using the joining member's server
   nickname, falling back to their global display name or username. The name is
@@ -159,7 +159,7 @@ The channel IDs work without additional configuration and can be overridden:
 
 ```dotenv
 WELCOME_SOURCE_CHANNEL_ID=1401891894329479278
-WELCOME_TARGET_CHANNEL_ID=1421187164187791381
+WELCOME_TARGET_CHANNEL_ID=1566815311255048282
 ```
 
 Set either ID to `0` to disable welcomes. The destination must be a text channel
