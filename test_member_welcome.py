@@ -16,12 +16,13 @@ TARGET_CHANNEL_ID = 1421187164187791381
 MEMBER_ID = 123456789012345678
 
 
-def make_user(*, avatar="a_profile_avatar", bot=False):
+def make_user(*, avatar="a_profile_avatar", bot=False, global_name=None):
     return discord.User(
         state=Mock(),
         data={
             "id": str(MEMBER_ID),
             "username": "new_member",
+            "global_name": global_name,
             "discriminator": "0",
             "avatar": avatar,
             "bot": bot,
@@ -80,7 +81,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         components = kwargs["view"].to_components()
         self.assertEqual(
             components[0]["components"][0]["content"],
-            f"Hey , <@{MEMBER_ID}>, welcome to Mindo AI",
+            r"Hey, **new\_member**, welcome to Mindo AI",
         )
         self.assertEqual(
             components[0]["accessory"]["media"]["url"],
@@ -92,7 +93,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             kwargs["allowed_mentions"].to_dict(),
-            {"users": [MEMBER_ID], "parse": []},
+            {"parse": []},
         )
         self.assertFalse(kwargs["allowed_mentions"].replied_user)
         self.assertEqual(kwargs["file"].filename, WELCOME_IMAGE_NAME)
@@ -119,6 +120,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         member = discord.Member(
             data={
                 "user": {"id": str(MEMBER_ID)},
+                "nick": "Server nickname",
                 "roles": [],
                 "avatar": "guild_avatar",
                 "flags": 0,
@@ -130,10 +132,60 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.relay.handle_message(self.message(author=member)))
 
         components = self.target.send.call_args.kwargs["view"].to_components()
+        self.assertEqual(
+            components[0]["components"][0]["content"],
+            "Hey, **Server nickname**, welcome to Mindo AI",
+        )
         self.assertIn(
             f"/guilds/{self.guild.id}/users/{MEMBER_ID}/avatars/guild_avatar",
             components[0]["accessory"]["media"]["url"],
         )
+
+    async def test_display_name_falls_back_to_global_name_then_username(self):
+        for global_name, expected_name in [
+            ("Global display", "Global display"),
+            (None, r"new\_member"),
+        ]:
+            for as_member in (False, True):
+                with self.subTest(global_name=global_name, as_member=as_member):
+                    user = make_user(global_name=global_name)
+                    author = user
+                    if as_member:
+                        state = Mock()
+                        state.store_user.return_value = user
+                        author = discord.Member(
+                            data={"user": {"id": str(MEMBER_ID)}, "roles": [], "flags": 0},
+                            guild=self.guild,
+                            state=state,
+                        )
+
+                    message = self.message(
+                        id=1422222222222222223 + self.target.send.await_count,
+                        author=author,
+                    )
+                    self.assertTrue(await self.relay.handle_message(message))
+
+                    components = self.target.send.call_args.kwargs["view"].to_components()
+                    self.assertEqual(
+                        components[0]["components"][0]["content"],
+                        f"Hey, **{expected_name}**, welcome to Mindo AI",
+                    )
+
+    async def test_display_name_cannot_inject_markdown_or_mentions(self):
+        author = make_user(
+            global_name=f"**Nick** <@{MEMBER_ID}> @everyone @here"
+        )
+
+        self.assertTrue(await self.relay.handle_message(self.message(author=author)))
+
+        kwargs = self.target.send.call_args.kwargs
+        greeting = kwargs["view"].to_components()[0]["components"][0]["content"]
+        self.assertEqual(
+            greeting,
+            r"Hey, **\*\*Nick\*\* <@"
+            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI",
+        )
+        self.assertEqual(kwargs["allowed_mentions"].to_dict(), {"parse": []})
 
     async def test_ignores_chat_bot_logs_boosts_other_channels_and_dms(self):
         cases = [

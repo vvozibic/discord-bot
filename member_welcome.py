@@ -15,11 +15,14 @@ DEFAULT_IMAGE_PATH = Path(__file__).resolve().parent / "assets" / WELCOME_IMAGE_
 
 
 def build_welcome_layout(member: discord.Member | discord.User) -> discord.ui.LayoutView:
-    """Keep the mention, current display avatar, and banner in one message."""
+    """Show the display name without relying on Discord's mention resolution."""
+    name = discord.utils.escape_mentions(
+        discord.utils.escape_markdown(member.display_name)
+    )
     view = discord.ui.LayoutView(timeout=None)
     view.add_item(
         discord.ui.Section(
-            discord.ui.TextDisplay(f"Hey , <@{member.id}>, welcome to Mindo AI"),
+            discord.ui.TextDisplay(f"Hey, **{name}**, welcome to Mindo AI"),
             accessory=discord.ui.Thumbnail(
                 member.display_avatar.with_size(256).url,
                 description="New member's Discord avatar",
@@ -87,12 +90,7 @@ class MemberWelcomeRelay:
                     await target.send(
                         view=build_welcome_layout(message.author),
                         file=banner,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=[message.author],
-                            roles=False,
-                            everyone=False,
-                            replied_user=False,
-                        ),
+                        allowed_mentions=discord.AllowedMentions.none(),
                     )
             except (discord.HTTPException, OSError):
                 logger.exception(
