@@ -24,7 +24,7 @@ def discord_error(error_type=discord.Forbidden, status=403):
 class FAQContentTests(unittest.TestCase):
     def test_document_snapshot_has_all_six_questions_and_bundled_image(self):
         embed, image = build_faq()
-        self.assertEqual(embed.title, "💡MindoAI Quick Q&A")
+        self.assertEqual(embed.title, "<:004:1420713409346928650> MindoAI Quick Q&A")
         for question in (
             "What is MindoAI?", "Where is MindoAI going? Is there a roadmap?",
             "I'm new. Where do I start?", "How do I earn roles?", "When is TGE?",
@@ -148,7 +148,7 @@ class FAQCommandTests(unittest.IsolatedAsyncioTestCase):
         self.channel.send.assert_awaited_once()
         self.item.channel.send.assert_not_awaited()
         kwargs = self.channel.send.call_args.kwargs
-        self.assertEqual(kwargs["embed"].title, "💡MindoAI Quick Q&A")
+        self.assertEqual(kwargs["embed"].title, "<:004:1420713409346928650> MindoAI Quick Q&A")
         self.assertEqual(kwargs["allowed_mentions"].to_dict()["parse"], [])
         self.item.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
         self.assertTrue(self.item.followup.send.call_args.kwargs["ephemeral"])

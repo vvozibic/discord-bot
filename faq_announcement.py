@@ -161,6 +161,14 @@ def export_preview(destination):
         )
         paragraphs.append("<p>" + escaped.replace("\n", "<br>") + "</p>")
     image_data = base64.b64encode(image.read_bytes()).decode("ascii")
+    title = html.escape(embed.title)
+    emoji_tag = "<:004:1420713409346928650>"
+    if emoji_tag in embed.title:
+        emoji_data = base64.b64encode((ROOT / "assets/mindo-faq-title-emoji.png").read_bytes()).decode("ascii")
+        title = title.replace(
+            html.escape(emoji_tag),
+            '<img class="title-emoji" alt=":004:" src="data:image/png;base64,' + emoji_data + '">',
+        )
     document = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MindoAI FAQ preview</title><style>
@@ -169,9 +177,10 @@ main{max-width:580px;margin:auto}.status{font-size:13px;color:#b5bac1;margin-bot
 article{padding:18px 18px 18px 15px;border-left:4px solid #00ff99;border-radius:4px;background:#2b2d31}
 h1{font-size:19px;line-height:1.35;margin:0 0 16px}p{margin:0 0 16px}p:last-of-type{margin-bottom:20px}
 img{display:block;width:100%;height:auto;border-radius:4px}strong{font-weight:700}
+.title-emoji{display:inline-block;width:22px;height:22px;vertical-align:-4px;border-radius:3px;margin-right:3px}
 a{color:#00a8fc;text-decoration:none}a:hover{text-decoration:underline}
 </style><main><div class="status">Local preview · Nothing has been published to Discord</div><article>
-<h1>""" + html.escape(embed.title) + "</h1>" + "".join(paragraphs) + '<img alt="MindoAI FAQ artwork" src="data:image/png;base64,' + image_data + '"></article></main></html>'
+<h1>""" + title + "</h1>" + "".join(paragraphs) + '<img alt="MindoAI FAQ artwork" src="data:image/png;base64,' + image_data + '"></article></main></html>'
     preview = destination / "faq-preview.html"
     preview.write_text(document, encoding="utf-8")
     return preview
