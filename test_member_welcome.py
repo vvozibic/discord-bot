@@ -1,12 +1,14 @@
 import asyncio
-import hashlib
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
+import aiohttp
 import discord
+from PIL import Image
 
 from member_welcome import DEFAULT_IMAGE_PATH, MemberWelcomeRelay, WELCOME_IMAGE_NAME
 
@@ -38,6 +40,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.guild = Mock(spec=discord.Guild)
         self.guild.id = 1400787114333044887
+        self.guild.text_channels = []
         self.target = Mock(spec=discord.TextChannel)
         self.target.id = TARGET_CHANNEL_ID
         self.target.guild = self.guild
@@ -47,6 +50,18 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.relay = MemberWelcomeRelay(
             source_channel_id=SOURCE_CHANNEL_ID,
             target_channel_id=TARGET_CHANNEL_ID,
+        )
+        avatar = BytesIO()
+        Image.new("RGB", (64, 48), (120, 180, 255)).save(avatar, format="PNG")
+        self.avatar_bytes = avatar.getvalue()
+        self.avatar_urls = []
+
+        async def read_avatar(asset):
+            self.avatar_urls.append(asset.url)
+            return self.avatar_bytes
+
+        self.avatar_read = self.enterContext(
+            patch("discord.Asset.read", autospec=True, side_effect=read_avatar)
         )
 
     def message(self, **overrides):
@@ -63,7 +78,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         values.update(overrides)
         return SimpleNamespace(**values)
 
-    async def test_join_sends_exact_greeting_avatar_and_original_banner_together(self):
+    async def test_join_sends_display_name_and_personalized_card_together(self):
         attachment_bytes = []
 
         async def capture_upload(**kwargs):
@@ -80,12 +95,8 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         kwargs = self.target.send.call_args.kwargs
         components = kwargs["view"].to_components()
         self.assertEqual(
-            components[0]["components"][0]["content"],
-            r"Hey, **new\_member**, welcome to Mindo AI",
-        )
-        self.assertEqual(
-            components[0]["accessory"]["media"]["url"],
-            message.author.display_avatar.with_size(256).url,
+            components[0]["content"],
+            "Hey, **new\\_member**, welcome to Mindo AI\nNext stop: #introductions",
         )
         self.assertEqual(
             components[1]["items"][0]["media"]["url"],
@@ -98,21 +109,19 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(kwargs["allowed_mentions"].replied_user)
         self.assertEqual(kwargs["file"].filename, WELCOME_IMAGE_NAME)
         self.assertTrue(kwargs["file"].fp.closed)
-        self.assertEqual(
-            hashlib.sha256(attachment_bytes[0]).hexdigest(),
-            "12ad1d42f483ce7e130fdda5d72d7420ccaf0a1eb27dff8e072bf868fdc05592",
-        )
+        self.avatar_read.assert_awaited_once()
+        with Image.open(BytesIO(attachment_bytes[0])) as card:
+            self.assertEqual(card.format, "PNG")
+            self.assertEqual(card.size, (1280, 640))
+            self.assertEqual(card.getpixel((640, 256))[:3], (120, 180, 255))
+        self.assertNotEqual(attachment_bytes[0], DEFAULT_IMAGE_PATH.read_bytes())
 
     async def test_member_without_custom_avatar_uses_discord_default(self):
         message = self.message(author=make_user(avatar=None))
 
         self.assertTrue(await self.relay.handle_message(message))
 
-        components = self.target.send.call_args.kwargs["view"].to_components()
-        self.assertIn(
-            "/embed/avatars/",
-            components[0]["accessory"]["media"]["url"],
-        )
+        self.assertIn("/embed/avatars/", self.avatar_urls[0])
 
     async def test_guild_specific_avatar_takes_precedence_over_user_avatar(self):
         state = Mock()
@@ -133,12 +142,12 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
 
         components = self.target.send.call_args.kwargs["view"].to_components()
         self.assertEqual(
-            components[0]["components"][0]["content"],
-            "Hey, **Server nickname**, welcome to Mindo AI",
+            components[0]["content"],
+            "Hey, **Server nickname**, welcome to Mindo AI\nNext stop: #introductions",
         )
         self.assertIn(
             f"/guilds/{self.guild.id}/users/{MEMBER_ID}/avatars/guild_avatar",
-            components[0]["accessory"]["media"]["url"],
+            self.avatar_urls[0],
         )
 
     async def test_display_name_falls_back_to_global_name_then_username(self):
@@ -167,8 +176,8 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
 
                     components = self.target.send.call_args.kwargs["view"].to_components()
                     self.assertEqual(
-                        components[0]["components"][0]["content"],
-                        f"Hey, **{expected_name}**, welcome to Mindo AI",
+                        components[0]["content"],
+                        f"Hey, **{expected_name}**, welcome to Mindo AI\nNext stop: #introductions",
                     )
 
     async def test_display_name_cannot_inject_markdown_or_mentions(self):
@@ -179,13 +188,40 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.relay.handle_message(self.message(author=author)))
 
         kwargs = self.target.send.call_args.kwargs
-        greeting = kwargs["view"].to_components()[0]["components"][0]["content"]
+        greeting = kwargs["view"].to_components()[0]["content"]
         self.assertEqual(
             greeting,
             r"Hey, **\*\*Nick\*\* <@"
-            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI",
+            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI\nNext stop: #introductions",
         )
         self.assertEqual(kwargs["allowed_mentions"].to_dict(), {"parse": []})
+
+    async def test_introductions_channel_is_linked_when_present(self):
+        self.guild.text_channels = [SimpleNamespace(name="introductions", id=987654321)]
+
+        self.assertTrue(await self.relay.handle_message(self.message()))
+
+        components = self.target.send.call_args.kwargs["view"].to_components()
+        self.assertIn("Next stop: <#987654321>", components[0]["content"])
+
+    async def test_avatar_download_failure_still_sends_a_personalized_card(self):
+        attachment_bytes = []
+
+        async def capture_upload(**kwargs):
+            attachment_bytes.append(kwargs["file"].fp.read())
+
+        self.target.send.side_effect = capture_upload
+        for error in [http_error(discord.NotFound, 404), aiohttp.ClientError(), TimeoutError()]:
+            with self.subTest(error=type(error).__name__):
+                self.avatar_read.side_effect = error
+                message = self.message(id=1422222222222222223 + len(attachment_bytes))
+                with self.assertLogs("member_welcome", level="WARNING"):
+                    self.assertTrue(await self.relay.handle_message(message))
+
+        self.assertEqual(len(attachment_bytes), 3)
+        for card_bytes in attachment_bytes:
+            with Image.open(BytesIO(card_bytes)) as card:
+                self.assertEqual(card.size, (1280, 640))
 
     async def test_ignores_chat_bot_logs_boosts_other_channels_and_dms(self):
         cases = [
