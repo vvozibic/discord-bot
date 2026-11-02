@@ -42,6 +42,36 @@ npm run dev
 - The worker is stubbed and returns deterministic fake results based on the user ID + link. Replace the stub worker with your real job processor when ready.
 - The bot role must be above the target roles in the Discord role hierarchy to assign them.
 
+## Support panel
+
+The existing Python bot owns the support banner in
+`1400849374732615762` (`#support-ticket`). Ticket Tool continues to create and
+manage tickets using its original button. The bundled image is
+`assets/mindo-support-banner.png`; no local server or image-hosting URL is needed.
+
+After deploying this branch and restarting the existing bot:
+
+1. Give that bot **View Channel**, **Send Messages**, **Embed Links**,
+   **Attach Files**, **Read Message History** and **Manage Messages** in the
+   support channel. Use its existing token and service.
+2. As a server administrator, run `/support-panel` in Mindo AI. It publishes
+   to the configured support channel even when invoked from `#admin-only`.
+   Repeating it updates this bot's existing card, including after restarts.
+3. In Ticket Tool's dashboard, select the existing **Support** panel (`1`) and
+   **Send** it to `#support-ticket` after the banner. When that original panel
+   appears immediately below this bot's card, the bot automatically hides only
+   its default embed. The original **Create ticket** button remains owned by
+   Ticket Tool. No ticket is opened by this setup.
+4. If the panel was sent while the bot was offline, run `/support-hide` with
+   that Ticket Tool message ID. `/support-restore` restores its standard embed.
+
+These commands require Administrator permission at runtime and only operate in
+the configured server/channel. Message Content Intent is not required. Defaults
+are set in `.env.example` via `SUPPORT_GUILD_ID`, `SUPPORT_CHANNEL_ID` and
+`SUPPORT_TICKET_TOOL_ID`; a deploy/reconnect never reposts the banner by itself.
+Old test-bot cards and older Ticket Tool messages are not deleted automatically.
+Once the new pair is verified, an administrator can remove obsolete cards.
+
 ## Forest Trail mini-game
 
 The complete Discord Activity and score API live in [`game/`](game/README.md).

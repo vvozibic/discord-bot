@@ -18,6 +18,7 @@ import campaign_link_report
 import channel_contributor_report
 import message_audit
 from member_welcome import MemberWelcomeRelay
+from support_panel import SupportPanel, register_support_commands
 from game_launcher import ForestTrailView, register_game_command
 from discord_runtime import build_bot_intents, require_message_content
 import database
@@ -973,6 +974,8 @@ intents = build_bot_intents()
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 register_game_command(tree)
+support_panel = SupportPanel.from_env()
+register_support_commands(tree, support_panel)
 member_welcome_relay = MemberWelcomeRelay(
     source_channel_id=config.WELCOME_SOURCE_CHANNEL_ID,
     target_channel_id=config.WELCOME_TARGET_CHANNEL_ID,
@@ -3346,6 +3349,7 @@ async def verify_cmd(interaction: discord.Interaction, image: discord.Attachment
 @client.event
 async def on_message(message: discord.Message):
     await member_welcome_relay.handle_message(message)
+    await support_panel.handle_message(message)
     if client.intents.message_content:
         await maybe_delete_duplicate_believer_x_proof(message)
 
