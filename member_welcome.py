@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from collections import OrderedDict
 from contextlib import closing
 from io import BytesIO
@@ -22,7 +23,7 @@ AVATAR_DOWNLOAD_TIMEOUT = 10
 def build_welcome_layout(
     member: discord.Member | discord.User,
     *,
-    introductions_channel_id: int | None = None,
+    general_chat_channel_id: int | None = None,
 ) -> discord.ui.LayoutView:
     """Show the display name without relying on Discord's mention resolution."""
     name = discord.utils.escape_mentions(
@@ -30,9 +31,9 @@ def build_welcome_layout(
     )
     view = discord.ui.LayoutView(timeout=None)
     next_stop = (
-        f"<#{introductions_channel_id}>"
-        if introductions_channel_id is not None
-        else "#introductions"
+        f"<#{general_chat_channel_id}>"
+        if general_chat_channel_id is not None
+        else "#general-chat"
     )
     view.add_item(
         discord.ui.TextDisplay(
@@ -114,8 +115,10 @@ class MemberWelcomeRelay:
                     avatar_bytes,
                     template_path=self.image_path,
                 )
-                introductions = discord.utils.get(
-                    message.guild.text_channels, name="introductions"
+                general_chat = discord.utils.find(
+                    lambda channel: re.fullmatch(r"[\W_]*general-chat", channel.name)
+                    is not None,
+                    message.guild.text_channels,
                 )
                 with BytesIO(card_bytes) as card_buffer, closing(
                     discord.File(card_buffer, filename=WELCOME_IMAGE_NAME)
@@ -123,8 +126,8 @@ class MemberWelcomeRelay:
                     await target.send(
                         view=build_welcome_layout(
                             message.author,
-                            introductions_channel_id=(
-                                introductions.id if introductions is not None else None
+                            general_chat_channel_id=(
+                                general_chat.id if general_chat is not None else None
                             ),
                         ),
                         file=banner,
