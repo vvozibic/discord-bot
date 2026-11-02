@@ -143,9 +143,9 @@ When Discord posts a native join notification (`MessageType.new_member`) in
   avatar inside the neon ring and `Welcome, display name` on the cabinet. Server
   avatars and Discord default avatars are supported, and long names fit the text
   area automatically. If the avatar cannot be downloaded, the card uses initials.
-- A `Next stop: #general-chat` line that links to that server channel when it
-  exists, including names with a decorative emoji or separator prefix such as
-  `💬│general-chat`. The same wording appears in the card artwork.
+- A `Next stop: #general-chat` subtitle in the card artwork. The accompanying
+  text uses `<#1422969379062284389>` to link directly to the destination channel,
+  independently of its name, decorative prefix, or local channel cache.
 
 The arcade background is bundled as `assets/mindo-welcome-arcade.png`; its image
 editing prompt is saved alongside it. The renderer uses the bundled Noto Sans font

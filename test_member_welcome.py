@@ -96,7 +96,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         components = kwargs["view"].to_components()
         self.assertEqual(
             components[0]["content"],
-            "Hey, **new\\_member**, welcome to Mindo AI\nNext stop: #general-chat",
+            "Hey, **new\\_member**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
         )
         self.assertEqual(
             components[1]["items"][0]["media"]["url"],
@@ -143,7 +143,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         components = self.target.send.call_args.kwargs["view"].to_components()
         self.assertEqual(
             components[0]["content"],
-            "Hey, **Server nickname**, welcome to Mindo AI\nNext stop: #general-chat",
+            "Hey, **Server nickname**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
         )
         self.assertIn(
             f"/guilds/{self.guild.id}/users/{MEMBER_ID}/avatars/guild_avatar",
@@ -177,7 +177,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
                     components = self.target.send.call_args.kwargs["view"].to_components()
                     self.assertEqual(
                         components[0]["content"],
-                        f"Hey, **{expected_name}**, welcome to Mindo AI\nNext stop: #general-chat",
+                        f"Hey, **{expected_name}**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
                     )
 
     async def test_display_name_cannot_inject_markdown_or_mentions(self):
@@ -192,18 +192,18 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             greeting,
             r"Hey, **\*\*Nick\*\* <@"
-            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI\nNext stop: #general-chat",
+            "\u200b123456789012345678> @\u200beveryone @\u200bhere**, welcome to Mindo AI\nNext stop: <#1422969379062284389>",
         )
         self.assertEqual(kwargs["allowed_mentions"].to_dict(), {"parse": []})
 
-    async def test_general_chat_channel_is_linked_with_or_without_decorative_prefix(self):
-        for index, name in enumerate(["general-chat", "💬│general-chat", "💬 | general-chat"]):
-            with self.subTest(name=name):
-                self.guild.text_channels = [
-                    SimpleNamespace(name="introductions", id=111),
-                    SimpleNamespace(name="not-general-chat", id=222),
-                    SimpleNamespace(name=name, id=987654321),
-                ]
+    async def test_next_stop_links_to_exact_id_without_relying_on_channel_name_or_cache(self):
+        for index, channels in enumerate([
+            [],
+            [SimpleNamespace(name="renamed-chat", id=1422969379062284389)],
+            [SimpleNamespace(name="general-chat", id=987654321)],
+        ]):
+            with self.subTest(channels=channels):
+                self.guild.text_channels = channels
 
                 self.assertTrue(
                     await self.relay.handle_message(
@@ -212,7 +212,7 @@ class MemberWelcomeTests(unittest.IsolatedAsyncioTestCase):
                 )
 
                 components = self.target.send.call_args.kwargs["view"].to_components()
-                self.assertIn("Next stop: <#987654321>", components[0]["content"])
+                self.assertIn("Next stop: <#1422969379062284389>", components[0]["content"])
 
     async def test_avatar_download_failure_still_sends_a_personalized_card(self):
         attachment_bytes = []

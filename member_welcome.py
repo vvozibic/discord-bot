@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 from collections import OrderedDict
 from contextlib import closing
 from io import BytesIO
@@ -18,26 +17,18 @@ logger = logging.getLogger(__name__)
 WELCOME_IMAGE_NAME = "mindo-welcome.png"
 DEFAULT_IMAGE_PATH = DEFAULT_TEMPLATE_PATH
 AVATAR_DOWNLOAD_TIMEOUT = 10
+NEXT_STOP_CHANNEL_ID = 1422969379062284389
 
 
-def build_welcome_layout(
-    member: discord.Member | discord.User,
-    *,
-    general_chat_channel_id: int | None = None,
-) -> discord.ui.LayoutView:
+def build_welcome_layout(member: discord.Member | discord.User) -> discord.ui.LayoutView:
     """Show the display name without relying on Discord's mention resolution."""
     name = discord.utils.escape_mentions(
         discord.utils.escape_markdown(member.display_name)
     )
     view = discord.ui.LayoutView(timeout=None)
-    next_stop = (
-        f"<#{general_chat_channel_id}>"
-        if general_chat_channel_id is not None
-        else "#general-chat"
-    )
     view.add_item(
         discord.ui.TextDisplay(
-            f"Hey, **{name}**, welcome to Mindo AI\nNext stop: {next_stop}"
+            f"Hey, **{name}**, welcome to Mindo AI\nNext stop: <#{NEXT_STOP_CHANNEL_ID}>"
         )
     )
     view.add_item(
@@ -115,21 +106,11 @@ class MemberWelcomeRelay:
                     avatar_bytes,
                     template_path=self.image_path,
                 )
-                general_chat = discord.utils.find(
-                    lambda channel: re.fullmatch(r"[\W_]*general-chat", channel.name)
-                    is not None,
-                    message.guild.text_channels,
-                )
                 with BytesIO(card_bytes) as card_buffer, closing(
                     discord.File(card_buffer, filename=WELCOME_IMAGE_NAME)
                 ) as banner:
                     await target.send(
-                        view=build_welcome_layout(
-                            message.author,
-                            general_chat_channel_id=(
-                                general_chat.id if general_chat is not None else None
-                            ),
-                        ),
+                        view=build_welcome_layout(message.author),
                         file=banner,
                         allowed_mentions=discord.AllowedMentions.none(),
                     )
