@@ -4,36 +4,46 @@ import asyncio
 import logging
 from collections import OrderedDict
 from contextlib import closing
+from io import BytesIO
 from pathlib import Path
 
+import aiohttp
 import discord
+
+from welcome_card import DEFAULT_TEMPLATE_PATH, render_welcome_card
 
 
 logger = logging.getLogger(__name__)
 WELCOME_IMAGE_NAME = "mindo-welcome.png"
-DEFAULT_IMAGE_PATH = Path(__file__).resolve().parent / "assets" / WELCOME_IMAGE_NAME
+DEFAULT_IMAGE_PATH = DEFAULT_TEMPLATE_PATH
+AVATAR_DOWNLOAD_TIMEOUT = 10
 
 
-def build_welcome_layout(member: discord.Member | discord.User) -> discord.ui.LayoutView:
+def build_welcome_layout(
+    member: discord.Member | discord.User,
+    *,
+    introductions_channel_id: int | None = None,
+) -> discord.ui.LayoutView:
     """Show the display name without relying on Discord's mention resolution."""
     name = discord.utils.escape_mentions(
         discord.utils.escape_markdown(member.display_name)
     )
     view = discord.ui.LayoutView(timeout=None)
+    next_stop = (
+        f"<#{introductions_channel_id}>"
+        if introductions_channel_id is not None
+        else "#introductions"
+    )
     view.add_item(
-        discord.ui.Section(
-            discord.ui.TextDisplay(f"Hey, **{name}**, welcome to Mindo AI"),
-            accessory=discord.ui.Thumbnail(
-                member.display_avatar.with_size(256).url,
-                description="New member's Discord avatar",
-            ),
+        discord.ui.TextDisplay(
+            f"Hey, **{name}**, welcome to Mindo AI\nNext stop: {next_stop}"
         )
     )
     view.add_item(
         discord.ui.MediaGallery(
             discord.MediaGalleryItem(
                 f"attachment://{WELCOME_IMAGE_NAME}",
-                description="Mindo Poker welcome banner",
+                description="Personalized Mindo AI arcade welcome card",
             )
         )
     )
@@ -86,13 +96,41 @@ class MemberWelcomeRelay:
                     )
                     return False
 
-                with closing(discord.File(self.image_path, filename=WELCOME_IMAGE_NAME)) as banner:
+                try:
+                    avatar = message.author.display_avatar.with_size(256).with_format("png")
+                    avatar_bytes = await asyncio.wait_for(
+                        avatar.read(), timeout=AVATAR_DOWNLOAD_TIMEOUT
+                    )
+                except (discord.HTTPException, aiohttp.ClientError, TimeoutError):
+                    logger.warning(
+                        "Could not download welcome avatar for member %s; using initials",
+                        message.author.id,
+                    )
+                    avatar_bytes = None
+
+                card_bytes = await asyncio.to_thread(
+                    render_welcome_card,
+                    message.author.display_name,
+                    avatar_bytes,
+                    template_path=self.image_path,
+                )
+                introductions = discord.utils.get(
+                    message.guild.text_channels, name="introductions"
+                )
+                with BytesIO(card_bytes) as card_buffer, closing(
+                    discord.File(card_buffer, filename=WELCOME_IMAGE_NAME)
+                ) as banner:
                     await target.send(
-                        view=build_welcome_layout(message.author),
+                        view=build_welcome_layout(
+                            message.author,
+                            introductions_channel_id=(
+                                introductions.id if introductions is not None else None
+                            ),
+                        ),
                         file=banner,
                         allowed_mentions=discord.AllowedMentions.none(),
                     )
-            except (discord.HTTPException, OSError):
+            except (discord.HTTPException, OSError, ValueError):
                 logger.exception(
                     "Could not send welcome for join message %s to channel %s",
                     message.id,

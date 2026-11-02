@@ -139,10 +139,20 @@ When Discord posts a native join notification (`MessageType.new_member`) in
   nickname, falling back to their global display name or username. The name is
   escaped text, so it stays visible when Discord cannot resolve a mention and
   does not ping anyone.
-- The member's current Discord display avatar as a thumbnail (including the
-  server avatar or Discord's default avatar when appropriate).
-- The supplied Mindo Poker image, bundled as `assets/mindo-welcome.png`, below
-  the greeting in the same message.
+- A personalized Mindo AI arcade card with the member's current Discord display
+  avatar inside the neon ring and `Welcome, display name` on the cabinet. Server
+  avatars and Discord default avatars are supported, and long names fit the text
+  area automatically. If the avatar cannot be downloaded, the card uses initials.
+- A `Next stop: #introductions` line that links to that server channel when it
+  exists. The same wording appears in the card artwork.
+
+The arcade background is bundled as `assets/mindo-welcome-arcade.png`; its image
+editing prompt is saved alongside it. The renderer uses the bundled Noto Sans font
+and runs off the bot's event loop. Personalized images stay in memory and are
+uploaded as `mindo-welcome.png`, without writing member data to disk.
+Unsupported decorative mathematical letters use readable equivalents in the
+image. Other characters outside the font's coverage may not render in the card;
+the accompanying Discord caption always retains the exact display name.
 
 The channel IDs work without additional configuration and can be overridden:
 
@@ -166,7 +176,8 @@ message is ignored for the last 4,096 successful sends in the running process;
 a later rejoin with a new system message receives a new welcome. Missing images
 and Discord permission/send errors are logged without posting a partial welcome.
 
-Run the welcome checks with `python -m unittest test_member_welcome -v`.
+Run the welcome checks with
+`python -m unittest test_member_welcome test_welcome_card -v`.
 
 ## Configurable message audit and raffle
 
