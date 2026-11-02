@@ -114,7 +114,7 @@ def render_welcome_card(
 ) -> bytes:
     """Return a PNG with the member's circular avatar and fitted display name.
 
-    The bundled artwork provides the cabinet, neon ring and introductions line.
+    The bundled artwork provides the cabinet, neon ring and general-chat line.
     Missing or unreadable avatar data uses initials; template/font errors remain
     visible to the caller so it can log and retry a failed welcome.
     """

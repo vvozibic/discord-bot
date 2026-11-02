@@ -175,6 +175,7 @@ class ContentGuardTests(unittest.IsolatedAsyncioTestCase):
         for enabled in (False, True):
             with self.subTest(enabled=enabled):
                 welcome = AsyncMock()
+                support = AsyncMock()
                 duplicate_check = AsyncMock()
                 namespace = {
                     "discord": discord,
@@ -182,6 +183,7 @@ class ContentGuardTests(unittest.IsolatedAsyncioTestCase):
                         "DISCORD_MESSAGE_CONTENT_INTENT": str(enabled).lower(),
                     })),
                     "member_welcome_relay": SimpleNamespace(handle_message=welcome),
+                    "support_panel": SimpleNamespace(handle_message=support),
                     "maybe_delete_duplicate_believer_x_proof": duplicate_check,
                 }
                 received = load_callback("on_message", namespace)
@@ -190,6 +192,7 @@ class ContentGuardTests(unittest.IsolatedAsyncioTestCase):
                 await received(message)
                 await edited(object(), message)
                 welcome.assert_awaited_once_with(message)
+                support.assert_awaited_once_with(message)
                 if enabled:
                     self.assertEqual(duplicate_check.await_count, 2)
                 else:
