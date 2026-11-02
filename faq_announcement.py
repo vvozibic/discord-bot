@@ -154,6 +154,11 @@ def export_preview(destination):
     for paragraph in embed.description.split("\n\n"):
         escaped = html.escape(paragraph)
         escaped = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
+        escaped = re.sub(
+            r"\[([^\]\n]+)\]\((https://discord\.com/channels/[0-9]+/[0-9]+)\)",
+            r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
+            escaped,
+        )
         paragraphs.append("<p>" + escaped.replace("\n", "<br>") + "</p>")
     image_data = base64.b64encode(image.read_bytes()).decode("ascii")
     document = """<!doctype html><html lang="en"><meta charset="utf-8">
@@ -164,6 +169,7 @@ main{max-width:580px;margin:auto}.status{font-size:13px;color:#b5bac1;margin-bot
 article{padding:18px 18px 18px 15px;border-left:4px solid #00ff99;border-radius:4px;background:#2b2d31}
 h1{font-size:19px;line-height:1.35;margin:0 0 16px}p{margin:0 0 16px}p:last-of-type{margin-bottom:20px}
 img{display:block;width:100%;height:auto;border-radius:4px}strong{font-weight:700}
+a{color:#00a8fc;text-decoration:none}a:hover{text-decoration:underline}
 </style><main><div class="status">Local preview · Nothing has been published to Discord</div><article>
 <h1>""" + html.escape(embed.title) + "</h1>" + "".join(paragraphs) + '<img alt="MindoAI FAQ artwork" src="data:image/png;base64,' + image_data + '"></article></main></html>'
     preview = destination / "faq-preview.html"
