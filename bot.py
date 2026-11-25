@@ -19,6 +19,7 @@ import channel_contributor_report
 import message_audit
 from member_welcome import MemberWelcomeRelay
 from support_panel import SupportPanel, register_support_commands
+from region_week import RegionWeek, register_region_week_command
 from game_launcher import ForestTrailView, register_game_command
 from discord_runtime import build_bot_intents, require_message_content
 from faq_announcement import register_faq_command
@@ -980,6 +981,8 @@ register_faq_editor(tree)
 register_game_command(tree)
 support_panel = SupportPanel.from_env()
 register_support_commands(tree, support_panel)
+region_week = RegionWeek.from_env()
+register_region_week_command(tree, region_week)
 member_welcome_relay = MemberWelcomeRelay(
     source_channel_id=config.WELCOME_SOURCE_CHANNEL_ID,
     target_channel_id=config.WELCOME_TARGET_CHANNEL_ID,
@@ -3361,6 +3364,14 @@ async def on_message(message: discord.Message):
 async def on_message_edit(before: discord.Message, after: discord.Message):
     if client.intents.message_content:
         await maybe_delete_duplicate_believer_x_proof(after)
+
+@client.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    await region_week.handle_reaction(client, payload, added=True)
+
+@client.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    await region_week.handle_reaction(client, payload, added=False)
 
 @client.event
 async def on_ready():

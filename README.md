@@ -125,6 +125,33 @@ are set in `.env.example` via `SUPPORT_GUILD_ID`, `SUPPORT_CHANNEL_ID` and
 Old test-bot cards and older Ticket Tool messages are not deleted automatically.
 Once the new pair is verified, an administrator can remove obsolete cards.
 
+## Region Week card
+
+`/region-week` posts the Region Week launch card as this bot (server nickname
+**Mindo AI**): `@everyone`, a green embed with the text from
+`assets/region-week-launch.md` and the banner `assets/region-week-launch.png`,
+then the nine flag reactions. A member who taps a flag gets that region's role
+at once; tapping another flag switches the role and removes the old reaction,
+so everyone holds one flag. Removing the reaction removes the role.
+
+- `channel`: where to post (the channel the command is run in when empty).
+- `ping`: `@everyone` with the card, on by default. Use `ping:False` for a quiet
+  test, for example in `#admin-only`.
+- `repost`: the command refuses to post a second card in a channel that already
+  has one among its last 50 messages, unless this is `True`.
+
+The bot needs **View Channel**, **Send Messages**, **Embed Links**, **Attach
+Files**, **Add Reactions**, **Read Message History**, **Manage Messages** (to
+remove a switched flag) and, with `ping`, **Mention Everyone** in the target
+channel, plus **Manage Roles** with its role above the nine region roles. The
+command checks all of this before posting and says what is missing.
+
+The region roles are fixed in `region_week.py` (`FLAG_ROLES`, created
+2026-11-24). The card is recognised by its bundled banner, so the flags keep
+working after a restart or a redeploy without any database. Only Administrator
+can run the command and only in the server set by `REGION_WEEK_GUILD_ID`.
+Message Content Intent and the Members intent are not needed.
+
 ## Forest Trail mini-game
 
 The complete Discord Activity and score API live in [`game/`](game/README.md).
