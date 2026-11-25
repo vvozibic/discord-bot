@@ -63,10 +63,17 @@ class RegionWeek:
 
     @staticmethod
     def is_card(message, bot_id):
+        """This bot's card: its embed shows the bundled banner or carries the Region Week text.
+
+        The text check keeps the flags working when an edit lost the banner (seen on 2026-11-25)."""
         if message.author.id != bot_id or message.webhook_id is not None:
             return False
-        return any(str(embed.image.url or "").split("?", 1)[0].rsplit("/", 1)[-1] == BANNER_NAME
-                   for embed in message.embeds)
+        for embed in message.embeds:
+            if str(embed.image.url or "").split("?", 1)[0].rsplit("/", 1)[-1] == BANNER_NAME:
+                return True
+            if "REGION WEEK" in str(embed.description or "").upper():
+                return True
+        return False
 
     def _remember(self, message_id, is_card):
         self._cards[message_id] = is_card
@@ -124,8 +131,11 @@ class RegionWeek:
                         break
                 if card is None:
                     raise ValueError(f"No Region Week card of this bot among the last 300 messages of {target.mention}.")
-                # Keep the uploaded banner (the card is recognised by it) and leave content and reactions alone.
-                await card.edit(embed=self.build_embed(), attachments=card.attachments)
+                # Upload the banner again with the new embed: a file shown inside an embed is not listed in
+                # message.attachments, so keeping "the existing attachments" drops it (2026-11-25). Content and
+                # reactions are left alone, so nobody is pinged again and every flag stays.
+                with closing(discord.File(self.banner_path, filename=BANNER_NAME)) as banner:
+                    await card.edit(embed=self.build_embed(), attachments=[banner])
                 self._remember(card.id, True)
             await self._reply(interaction, f"Region Week card updated in place: {card.jump_url}\n"
                                            "Same message, flags and roles; nobody was pinged again.")
@@ -253,7 +263,7 @@ def register_region_week_command(tree, region_week):
         channel="Where to post it (this channel when empty)",
         ping="Ping @everyone with the card (default: yes)",
         repost="Post again even though this channel already has the card",
-        update="Rewrite the text of the card already in the channel, in place, without a new post or ping",
+        update="Rewrite the card already in the channel in place (banner uploaded again), no new post or ping",
     )
     async def region_week_command(interaction: discord.Interaction, channel: discord.TextChannel | None = None,
                                   ping: bool = True, repost: bool = False, update: bool = False):
