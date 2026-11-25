@@ -200,8 +200,13 @@ class RegionWeekTests(unittest.IsolatedAsyncioTestCase):
     # ---------------------------------------------------------------- update in place
     async def test_update_rewrites_the_existing_card_in_place(self):
         old = card_message()
-        old.attachments = ["banner attachment"]
-        old.edit = AsyncMock()
+        old.attachments = []  # Discord does not list a file shown inside an embed
+        uploads = []
+
+        async def edit(**kwargs):
+            uploads.extend(item.fp.read() for item in kwargs["attachments"])
+
+        old.edit = AsyncMock(side_effect=edit)
         self.messages.append(old)
         interaction = self.interaction()
         await self.week.update(interaction, self.channel)
@@ -209,7 +214,9 @@ class RegionWeekTests(unittest.IsolatedAsyncioTestCase):
         kwargs = old.edit.call_args.kwargs
         self.assertEqual(kwargs["embed"].description, TEXT_PATH.read_text(encoding="utf-8").strip())
         self.assertEqual(kwargs["embed"].image.url, f"attachment://{BANNER_NAME}")
-        self.assertEqual(kwargs["attachments"], ["banner attachment"])
+        self.assertEqual([item.filename for item in kwargs["attachments"]], [BANNER_NAME])
+        self.assertEqual(uploads, [BANNER_PATH.read_bytes()])  # the banner goes up again with the edit
+        self.assertTrue(kwargs["attachments"][0].fp.closed)
         self.assertNotIn("content", kwargs)  # the @everyone line stays as it was, no new ping
         self.channel.send.assert_not_awaited()
         old.add_reaction.assert_not_awaited()
@@ -279,8 +286,18 @@ class RegionWeekTests(unittest.IsolatedAsyncioTestCase):
         restarted = RegionWeek()
         self.assertTrue(await restarted.handle_reaction(self.client, self.payload(INDIA, member=member), added=True))
         self.assertEqual(member.roles, [self.roles[ROLE_OF[INDIA]]])
-        self.assertFalse(RegionWeek.is_card(card_message(banner=False), BOT_ID))
+        plain = card_message(banner=False)
+        plain.embeds[0].description = "Weekly calendar"
+        self.assertFalse(RegionWeek.is_card(plain, BOT_ID))
         self.assertFalse(RegionWeek.is_card(card_message(author_id=1470503084164644946), BOT_ID))
+
+    async def test_card_that_lost_its_banner_is_still_recognised_by_its_text(self):
+        lost = card_message(banner=False)
+        lost.embeds[0].description = "# \U0001F30D MINDO AI REGION WEEK IS LIVE!"
+        self.messages.append(lost)
+        member = self.member()
+        self.assertTrue(await RegionWeek().handle_reaction(self.client, self.payload(INDIA, member=member), added=True))
+        self.assertEqual(member.roles, [self.roles[ROLE_OF[INDIA]]])
 
 
 class AssetAndCommandTests(unittest.TestCase):
