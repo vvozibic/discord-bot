@@ -20,6 +20,7 @@ import message_audit
 from member_welcome import MemberWelcomeRelay
 from support_panel import SupportPanel, register_support_commands
 from region_week import RegionWeek, register_region_week_command
+from command_sync import sync_global_commands
 from game_launcher import ForestTrailView, register_game_command
 from discord_runtime import build_bot_intents, require_message_content
 from faq_announcement import register_faq_command
@@ -3402,7 +3403,7 @@ async def on_ready():
             synced = await tree.sync(guild=guild_obj)
             print(f"Slash commands synced to guild {DISCORD_GUILD_ID}.")
         else:
-            synced = await tree.sync()
+            synced = await sync_global_commands(tree, client)
             print("Slash commands synced globally (may take time to appear).")
 
         SYNCED_COMMANDS.clear()
