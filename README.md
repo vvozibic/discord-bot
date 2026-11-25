@@ -139,6 +139,10 @@ so everyone holds one flag. Removing the reaction removes the role.
   test, for example in `#admin-only`.
 - `repost`: the command refuses to post a second card in a channel that already
   has one among its last 50 messages, unless this is `True`.
+- `update`: rewrites the text of the card already in the channel with the
+  current `assets/region-week-launch.md`, in place: the same message, banner,
+  flag reactions and roles, and nobody is pinged again. Nothing is posted or
+  deleted; it says so when the channel has no card of this bot.
 
 The bot needs **View Channel**, **Send Messages**, **Embed Links**, **Attach
 Files**, **Add Reactions**, **Read Message History**, **Manage Messages** (to

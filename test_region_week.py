@@ -197,6 +197,36 @@ class RegionWeekTests(unittest.IsolatedAsyncioTestCase):
         await self.week.publish(self.interaction(), repost=True)
         self.channel.send.assert_awaited_once()
 
+    # ---------------------------------------------------------------- update in place
+    async def test_update_rewrites_the_existing_card_in_place(self):
+        old = card_message()
+        old.attachments = ["banner attachment"]
+        old.edit = AsyncMock()
+        self.messages.append(old)
+        interaction = self.interaction()
+        await self.week.update(interaction, self.channel)
+        old.edit.assert_awaited_once()
+        kwargs = old.edit.call_args.kwargs
+        self.assertEqual(kwargs["embed"].description, TEXT_PATH.read_text(encoding="utf-8").strip())
+        self.assertEqual(kwargs["embed"].image.url, f"attachment://{BANNER_NAME}")
+        self.assertEqual(kwargs["attachments"], ["banner attachment"])
+        self.assertNotIn("content", kwargs)  # the @everyone line stays as it was, no new ping
+        self.channel.send.assert_not_awaited()
+        old.add_reaction.assert_not_awaited()
+        self.assertIn(old.jump_url, interaction.followup.send.call_args.args[0])
+
+    async def test_update_without_a_card_changes_nothing(self):
+        self.messages.append(card_message(author_id=1470503084164644946))  # another bot's look-alike
+        interaction = self.interaction()
+        await self.week.update(interaction, self.channel)
+        self.channel.send.assert_not_awaited()
+        self.assertIn("No Region Week card", interaction.followup.send.call_args.args[0])
+
+    async def test_update_is_admin_only(self):
+        interaction = self.interaction(administrator=False)
+        await self.week.update(interaction, self.channel)
+        self.channel.history.assert_not_called()
+
     # ---------------------------------------------------------------- flags
     async def test_flag_on_card_switches_region_role_and_old_reaction(self):
         self.messages.append(card_message())
@@ -269,7 +299,7 @@ class AssetAndCommandTests(unittest.TestCase):
         self.assertEqual(command.name, "region-week")
         self.assertTrue(command.default_permissions.administrator)
         self.assertTrue(command.guild_only)
-        self.assertEqual([parameter.name for parameter in command.parameters], ["channel", "ping", "repost"])
+        self.assertEqual([parameter.name for parameter in command.parameters], ["channel", "ping", "repost", "update"])
 
     def test_bot_wires_the_command_and_both_reaction_events(self):
         tree = ast.parse(Path(__file__).with_name("bot.py").read_text(encoding="utf-8"))
