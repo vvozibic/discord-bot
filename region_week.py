@@ -102,6 +102,39 @@ class RegionWeek:
             roles[emoji] = role
         return roles
 
+    async def update(self, interaction, channel=None):
+        """Rewrite the text of the card already posted in the channel, in place: same message, flags, roles, no ping."""
+        if not await self._authorize(interaction):
+            return
+        try:
+            async with self._publish_lock:
+                target = channel or interaction.channel
+                if not isinstance(target, discord.TextChannel) or target.guild.id != self.guild_id:
+                    raise ValueError("Pick a text channel in this server.")
+                me = interaction.guild.me
+                permissions = target.permissions_for(me)
+                missing = [name.replace("_", " ") for name in ("view_channel", "read_message_history", "embed_links")
+                           if not getattr(permissions, name)]
+                if missing:
+                    raise ValueError(f"Give this bot these permissions in {target.mention}: " + ", ".join(missing) + ".")
+                card = None
+                async for message in target.history(limit=300):
+                    if self.is_card(message, me.id):
+                        card = message
+                        break
+                if card is None:
+                    raise ValueError(f"No Region Week card of this bot among the last 300 messages of {target.mention}.")
+                # Keep the uploaded banner (the card is recognised by it) and leave content and reactions alone.
+                await card.edit(embed=self.build_embed(), attachments=card.attachments)
+                self._remember(card.id, True)
+            await self._reply(interaction, f"Region Week card updated in place: {card.jump_url}\n"
+                                           "Same message, flags and roles; nobody was pinged again.")
+        except (discord.HTTPException, OSError, ValueError) as error:
+            logger.warning("Region Week update failed: %s", type(error).__name__)
+            detail = str(error) if isinstance(error, ValueError) else (
+                "Check this bot's channel permissions, then retry.")
+            await self._reply(interaction, f"The Region Week card was not updated. {detail}")
+
     async def publish(self, interaction, channel=None, *, ping=True, repost=False):
         if not await self._authorize(interaction):
             return
@@ -220,9 +253,13 @@ def register_region_week_command(tree, region_week):
         channel="Where to post it (this channel when empty)",
         ping="Ping @everyone with the card (default: yes)",
         repost="Post again even though this channel already has the card",
+        update="Rewrite the text of the card already in the channel, in place, without a new post or ping",
     )
     async def region_week_command(interaction: discord.Interaction, channel: discord.TextChannel | None = None,
-                                  ping: bool = True, repost: bool = False):
-        await region_week.publish(interaction, channel, ping=ping, repost=repost)
+                                  ping: bool = True, repost: bool = False, update: bool = False):
+        if update:
+            await region_week.update(interaction, channel)
+        else:
+            await region_week.publish(interaction, channel, ping=ping, repost=repost)
 
     tree.add_command(region_week_command)
